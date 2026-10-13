@@ -1,6 +1,6 @@
 import { ErrorState, PageHeader, TagChip } from '@project-graphite/ui';
 import { useState } from 'react';
-import { bytes, percent, post, type ProjectDetail, type User } from '../api';
+import { bytes, can, percent, post, type ProjectDetail, type User } from '../api';
 import { Metrics } from '../components/Metrics';
 import { usePoll } from '../usePoll';
 
@@ -38,7 +38,7 @@ export function ProjectPage({ slug, user }: { slug: string; user: User }) {
   return (
     <div className="space-y-6">
       <PageHeader
-        actions={user.owner && project.sleeps && <Wake onWoken={() => void reload()} slug={slug} />}
+        actions={can(user, `project:${slug}`) && project.sleeps && <Wake onWoken={() => void reload()} slug={slug} />}
         eyebrow={<a className="rule-link" href="#/">Overview</a>}
         title={slug}
       >

@@ -53,25 +53,38 @@ async function role(token: string) {
   return membership?.state === 'active' ? membership.role === 'admin' : undefined;
 }
 
-const confirmed = new Map<string, number>();
+export type Role = 'owner' | 'member';
 
-export async function ownsNow(token: string | undefined, now = Date.now()) {
+const confirmed = new Map<string, { role: Role; at: number }>();
+
+export async function roleNow(token: string | undefined, now = Date.now()): Promise<Role | undefined> {
   if (config.dev) {
-    return config.dev.owner;
+    return config.dev.owner ? 'owner' : 'member';
   }
   if (token === undefined) {
-    return false;
+    return undefined;
   }
-  if ((confirmed.get(token) ?? 0) > now - 60_000) {
-    return true;
+  const cached = confirmed.get(token);
+  if (cached && cached.at > now - 60_000) {
+    return cached.role;
   }
-  const owner = (await role(token)) === true;
-  if (owner) {
-    confirmed.set(token, now);
-  } else {
+  const owner = await role(token);
+  if (owner === undefined) {
     confirmed.delete(token);
+    return undefined;
   }
-  return owner;
+  const current: Role = owner ? 'owner' : 'member';
+  confirmed.set(token, { role: current, at: now });
+  return current;
+}
+
+export async function organisationMembers(token: string) {
+  const [members, owners] = await Promise.all([
+    github<{ login: string }[]>(`/orgs/${config.organisation}/members?per_page=100`, token),
+    github<{ login: string }[]>(`/orgs/${config.organisation}/members?role=admin&per_page=100`, token),
+  ]);
+  const admins = new Set(owners.map((owner) => owner.login));
+  return members.map((member) => ({ login: member.login, owner: admins.has(member.login) }));
 }
 
 export function cookies(request: IncomingMessage) {

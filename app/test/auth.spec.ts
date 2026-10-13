@@ -1,6 +1,6 @@
 import { generateKeyPairSync, sign } from 'node:crypto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ownsNow, seal, unseal, verifyAccess, withoutSession } from '../src/server/auth.ts';
+import { roleNow, seal, unseal, verifyAccess, withoutSession } from '../src/server/auth.ts';
 import { config } from '../src/server/config.ts';
 
 const access = { team: 'graphite', audience: 'console-aud' };
@@ -63,7 +63,7 @@ describe('Cloudflare Access', () => {
   });
 });
 
-describe('owner actions', () => {
+describe('the role at the time of an action', () => {
   const dev = config.dev;
   let membership: { status: number; role?: string };
 
@@ -77,20 +77,20 @@ describe('owner actions', () => {
     vi.stubGlobal('fetch', async () => new Response(JSON.stringify({ state: 'active', role: membership.role }), { status: membership.status }));
   }
 
-  it('asks GitHub whether the user is still an owner', async () => {
+  it('asks GitHub for the role and keeps the answer for a minute', async () => {
     github();
     const now = Date.now();
     membership = { status: 200, role: 'admin' };
-    expect(await ownsNow('token-a', now)).toBe(true);
+    expect(await roleNow('token-a', now)).toBe('owner');
     membership = { status: 200, role: 'member' };
-    expect(await ownsNow('token-a', now + 1000)).toBe(true);
-    expect(await ownsNow('token-a', now + 61_000)).toBe(false);
+    expect(await roleNow('token-a', now + 1000)).toBe('owner');
+    expect(await roleNow('token-a', now + 61_000)).toBe('member');
   });
 
-  it('refuses without a token or a membership', async () => {
+  it('has no role without a token or a membership', async () => {
     github();
     membership = { status: 404 };
-    expect(await ownsNow('token-b')).toBe(false);
-    expect(await ownsNow(undefined)).toBe(false);
+    expect(await roleNow('token-b')).toBeUndefined();
+    expect(await roleNow(undefined)).toBeUndefined();
   });
 });
