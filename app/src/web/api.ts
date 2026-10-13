@@ -96,6 +96,7 @@ export interface HistoryData {
   span: number;
   step: number;
   series: Series[];
+  breakdown?: Series[];
 }
 
 export interface Image {

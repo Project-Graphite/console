@@ -142,9 +142,9 @@ export function Overview() {
         </a>
       )}
       {data?.host && <HostCards host={data.host} />}
-      {data?.host && <Metrics cpuMax={100} memoryMax={data.host.memory.total} query="target=host" />}
+      {data?.host && <Metrics cpuMax={100} memoryMax={data.host.memory.total} query="target=host&breakdown=projects" />}
       {data?.host && data.docker && <Storage docker={data.docker} host={data.host} />}
-      {data && data.projects.length === 0 && <EmptyState title="No projects to show">Nothing you own runs on the VPS yet.</EmptyState>}
+      {data && data.projects.length === 0 && <EmptyState title="No projects to show">Nothing runs on the VPS yet.</EmptyState>}
       {data && data.projects.length > 0 && <ProjectList projects={data.projects} />}
     </div>
   );

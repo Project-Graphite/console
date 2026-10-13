@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { History, keep, ranges } from '../src/server/history.ts';
+import { History, keep, projectTotals, ranges } from '../src/server/history.ts';
 
 const directories: string[] = [];
 const minute = 60_000;
@@ -47,5 +47,30 @@ describe('History', () => {
       { at: now, cpu: 6, memory: 60 },
     ]);
     history.close();
+  });
+});
+
+describe('projectTotals', () => {
+  it("adds up each project's containers per point, in whole-machine CPU", () => {
+    const series: Record<string, { at: number; cpu: number; memory: number }[]> = {
+      'strata-app-1': [{ at: 1, cpu: 40, memory: 300 }, { at: 2, cpu: 20, memory: 310 }],
+      'strata-postgres-1': [{ at: 1, cpu: 10, memory: 100 }],
+      'console-app-1': [{ at: 2, cpu: 4, memory: 80 }],
+      'graphite-message-lab-web-1': [],
+    };
+    const totals = projectTotals(
+      [
+        { name: 'strata-app-1', project: 'strata' },
+        { name: 'strata-postgres-1', project: 'strata' },
+        { name: 'console-app-1', project: 'console' },
+        { name: 'graphite-message-lab-web-1', project: 'graphite-message-lab' },
+      ],
+      (name) => series[name],
+      2,
+    );
+    expect(totals).toEqual([
+      { name: 'strata', points: [{ at: 1, cpu: 25, memory: 400 }, { at: 2, cpu: 10, memory: 310 }] },
+      { name: 'console', points: [{ at: 2, cpu: 2, memory: 80 }] },
+    ]);
   });
 });

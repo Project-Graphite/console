@@ -30,6 +30,23 @@ export interface Point {
   memory: number;
 }
 
+export function projectTotals(containers: { name: string; project: string }[], seriesOf: (name: string) => Point[], cpus: number) {
+  const projects = new Map<string, Map<number, Point>>();
+  for (const container of containers) {
+    const totals = projects.get(container.project) ?? new Map<number, Point>();
+    projects.set(container.project, totals);
+    for (const point of seriesOf(container.name)) {
+      const total = totals.get(point.at) ?? { at: point.at, cpu: 0, memory: 0 };
+      total.cpu += point.cpu / cpus;
+      total.memory += point.memory;
+      totals.set(point.at, total);
+    }
+  }
+  return [...projects]
+    .filter(([, totals]) => totals.size > 0)
+    .map(([name, totals]) => ({ name, points: [...totals.values()].sort((a, b) => a.at - b.at) }));
+}
+
 export class History {
   private readonly db: DatabaseSync;
 

@@ -15,7 +15,9 @@ One web page for the Project Graphite VPS and its handbook. It runs at
 | Docs | the handbook from the `docs` repository, with search |
 
 Usage charts cover 1h, 5h, 1d, 7d or 30d. Hovering shows the time and every line's value, with the
-nearest line highlighted. The chosen range and the pins are kept in the browser.
+nearest line highlighted. On the Overview, hovering the VPS chart also breaks that moment's CPU and
+memory down by project, largest first, with the rest as system and other; CPU there is a share of
+the whole machine. The chosen range and the pins are kept in the browser.
 
 Every organisation member can read everything except Admin. What they can change is set per
 member on the Admin page:

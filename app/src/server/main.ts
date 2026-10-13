@@ -7,7 +7,7 @@ import { authenticate, callback, githubToken, login, logout, organisationMembers
 import { config } from './config.ts';
 import { docker } from './docker.ts';
 import { docs } from './docs.ts';
-import { History, ranges, type Range } from './history.ts';
+import { History, projectTotals, ranges, type Range } from './history.ts';
 import { collect, containers, diskUsage, projects, refresh, snapshot } from './inventory.ts';
 import { monitor } from './monitor.ts';
 import { open, openSocket, parseOpen } from './proxy.ts';
@@ -187,7 +187,12 @@ async function api(user: User, request: http.IncomingMessage, url: URL) {
     if (target !== 'host' && !(await containers()).some((candidate) => candidate.name === target)) {
       throw new Refusal(404, 'No such container.');
     }
-    return { ...ranges[range], series: [{ name: target, points: history.series(target, range) }] };
+    const series = [{ name: target === 'host' ? 'VPS' : target, points: history.series(target, range) }];
+    if (target === 'host' && url.searchParams.get('breakdown') === 'projects') {
+      const [{ host }, views] = await Promise.all([snapshot(), containers()]);
+      return { ...ranges[range], series, breakdown: projectTotals(views, (name) => history.series(name, range), host.cpus) };
+    }
+    return { ...ranges[range], series };
   }
   if (route === 'GET /api/images') {
     const [images, all] = await Promise.all([
