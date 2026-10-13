@@ -1,0 +1,36 @@
+projects:
+  - slug: project-template # repository name
+    # parent: my-epic # epic slug
+    kind: project # project | epic
+    name: Project template # string, 2-60
+    summary: > # string, 20-240
+      The starting point every project is created from: shared CI wiring, the compose setup and the
+      service convention.
+    tags: [github-actions, docker] # string[], up to 6
+    owner: amrmscll # people handle
+    authors: [AmrMsCLL] # GitHub username[]
+    status: source-only # live | wip | archived | source-only
+    listed: false # true | false
+    pinned: false # true | false
+    # paths: [mods/my-mod] # folder[]
+    # releases: auto # auto | manual
+
+    # showcase:
+    #   problem: string, 20-500
+    #   approach: string, 20-700
+    #   outcome: string, 20-500
+    #   contributions:
+    #     - github: AmrMsCLL # one of authors
+    #       summary: string, 20-300
+
+    deploy:
+      kind: none # none | compose | pages
+
+      # kind: compose
+      # host: my-project.project-graphite.com # <label>.project-graphite.com
+      # source: { file: compose.production.yaml, service: web, port: 80 }
+      # secrets: [SECRET_KEY] # UPPER_SNAKE_CASE[]
+
+      # kind: pages
+      # host: my-project.project-graphite.com # <label>.project-graphite.com
+      # source: { directory: web, output: dist }

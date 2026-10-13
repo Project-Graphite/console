@@ -1,0 +1,24 @@
+name: Pipeline
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  pipeline:
+    name: Pipeline
+    permissions:
+      contents: read
+      packages: write
+      issues: write
+      pull-requests: write
+    uses: project-graphite/actions/.github/workflows/reusable-pipeline.yml@main
+    secrets: inherit

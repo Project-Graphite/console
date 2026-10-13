@@ -1,0 +1,22 @@
+name: project-template
+
+services:
+  web:
+    image: ghcr.io/project-graphite/project-template/web:${IMAGE_TAG:-latest}
+    expose:
+      - "80"
+    healthcheck:
+      test: [CMD, wget, --quiet, --tries=1, --spider, http://localhost/]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    init: true
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 128M
