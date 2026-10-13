@@ -37,6 +37,12 @@ Sign-in is two layers:
 2. **GitHub sign-in** names the user. An organisation admin is an owner, and anyone else sees only
    their registry projects.
 
+Sessions last 1 hour, after which the page signs in again through GitHub without a prompt. Owner
+actions (start, stop, restart, wake, prune, a terminal, the host shell, an open port) ask GitHub for
+the user's role before they run, at most once a minute. When that answer is no longer owner, the
+action is refused and the user's open terminals close; open terminals are also rechecked every
+hour. The session cookie is encrypted and holds the user's GitHub token for these checks.
+
 ## Running it
 
 ```sh

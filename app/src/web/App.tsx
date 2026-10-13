@@ -48,9 +48,7 @@ export function App() {
 
   useEffect(() => {
     get<User>('/api/me').then(setUser, (reason: Error) => {
-      if (reason instanceof Unauthorized) {
-        location.assign('/auth/login');
-      } else {
+      if (!(reason instanceof Unauthorized)) {
         setError(reason.message);
       }
     });
