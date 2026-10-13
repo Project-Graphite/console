@@ -1,6 +1,7 @@
 export interface User {
   login: string;
   owner: boolean;
+  ssh: string | null;
 }
 
 export interface Container {

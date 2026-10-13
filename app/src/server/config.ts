@@ -26,5 +26,6 @@ export const config = {
   dataDir: process.env.DATA_DIR ?? '/data',
   sablierUrl: process.env.SABLIER_URL ?? 'http://sablier:10000',
   self: process.env.HOSTNAME ?? '',
+  sshTarget: process.env.SSH_TARGET ?? 'ubuntu@localhost',
   webRoot: new URL('../web/', import.meta.url),
 };

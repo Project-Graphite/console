@@ -65,7 +65,7 @@ async function findContainer(user: User, id: string) {
 async function api(user: User, method: string, url: URL) {
   const route = `${method} ${url.pathname}`;
   if (route === 'GET /api/me') {
-    return user;
+    return { ...user, ssh: user.owner ? config.sshTarget : null };
   }
   if (route === 'GET /api/overview') {
     const visible = await scope(user);

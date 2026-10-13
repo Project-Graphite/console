@@ -6,8 +6,6 @@ import { Sparkline } from '../components/Sparkline';
 import { LazyTerminal } from '../components/LazyTerminal';
 import { usePoll } from '../usePoll';
 
-const sshHost = 'ssh.project-graphite.com';
-
 function Actions({ container, project, sleeps }: { container: Container; project: string; sleeps: boolean }) {
   const [confirm, setConfirm] = useState<'stop' | 'restart'>();
   const [message, setMessage] = useState<string>();
@@ -49,7 +47,7 @@ function Actions({ container, project, sleeps }: { container: Container; project
   );
 }
 
-function Ports({ container }: { container: Container }) {
+function Ports({ container, ssh }: { container: Container; ssh: string | null }) {
   const address = Object.values(container.networks)[0];
   if (!container.ports.length) {
     return null;
@@ -65,9 +63,9 @@ function Ports({ container }: { container: Container }) {
               open in the browser
             </a>
           </div>
-          {address && (
+          {address && ssh && (
             <code className="mono-sm block break-all text-faint">
-              ssh -L {port}:{address}:{port} deploy@{sshHost}
+              ssh -L {port}:{address}:{port} {ssh}
             </code>
           )}
         </div>
@@ -137,7 +135,7 @@ export function ContainerPage({ id, user }: { id: string; user: User }) {
         </dl>
       </section>
 
-      {user.owner && <Ports container={container} />}
+      {user.owner && <Ports container={container} ssh={user.ssh} />}
 
       <section className="space-y-2">
         <h2 className="mono-sm text-muted">Logs</h2>
