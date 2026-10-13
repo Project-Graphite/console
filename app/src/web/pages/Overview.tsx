@@ -1,6 +1,6 @@
 import { EmptyState, ErrorState, Meter, PageHeader, TagChip } from '@project-graphite/ui';
 import { useState } from 'react';
-import { bytes, completed, percent, type Host, type Overview as OverviewData, type Project } from '../api';
+import { bytes, completed, percent, type AlertsData, type Host, type Overview as OverviewData, type Project } from '../api';
 import { Metrics } from '../components/Metrics';
 import { load, save } from '../stored';
 import { usePoll } from '../usePoll';
@@ -128,12 +128,19 @@ function ProjectList({ projects }: { projects: Project[] }) {
 
 export function Overview() {
   const { data, error, reload } = usePoll<OverviewData>('/api/overview');
+  const active = usePoll<AlertsData>('/api/alerts', 60_000).data?.active ?? [];
   if (error && !data) {
     return <ErrorState onRetry={() => void reload()} title="The console could not read the VPS">{error.message}</ErrorState>;
   }
   return (
     <div className="space-y-6">
       <PageHeader title="Overview" />
+      {active.length > 0 && (
+        <a className="stat-card block border-l-4 border-l-[#e5736b] hover:bg-paper" href="#/alerts">
+          <p className="text-ink">{active.length === 1 ? active[0].title : `${active.length} alerts need attention`}</p>
+          <p className="mono-sm text-muted">{active.length === 1 ? active[0].detail : active.map((alert) => alert.title).join(' · ')}</p>
+        </a>
+      )}
       {data?.host && <HostCards host={data.host} />}
       {data?.host && <Metrics cpuMax={100} memoryMax={data.host.memory.total} query="target=host" />}
       {data?.host && data.docker && <Storage docker={data.docker} host={data.host} />}

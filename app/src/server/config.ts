@@ -18,6 +18,8 @@ export const config = {
   github: devLogin ? undefined : { clientId: required('GITHUB_CLIENT_ID'), clientSecret: required('GITHUB_CLIENT_SECRET') },
   access: production ? { team: required('ACCESS_TEAM'), audience: required('ACCESS_AUD') } : undefined,
   organisation: process.env.GITHUB_ORG ?? 'Project-Graphite',
+  alertsToken: process.env.ALERTS_TOKEN || undefined,
+  alertsRepo: process.env.ALERTS_REPO ?? 'project-graphite/platform',
   docsRepo: process.env.DOCS_REPO ?? 'project-graphite/docs',
   dockerSocket: process.env.DOCKER_SOCKET ?? '/var/run/docker.sock',
   hostRoot: process.env.HOST_ROOT ?? '/proc/1/root',

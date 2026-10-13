@@ -2,12 +2,14 @@ import { readFile } from 'node:fs/promises';
 import http from 'node:http';
 import { WebSocketServer } from 'ws';
 import { Access, permits, scopePattern } from './access.ts';
+import { Alerts } from './alerts.ts';
 import { authenticate, callback, githubToken, login, logout, organisationMembers, roleNow, sessionMs, type Role, type User } from './auth.ts';
 import { config } from './config.ts';
 import { docker } from './docker.ts';
 import { docs } from './docs.ts';
 import { History, ranges, type Range } from './history.ts';
 import { collect, containers, diskUsage, projects, refresh, snapshot } from './inventory.ts';
+import { monitor } from './monitor.ts';
 import { open, openSocket, parseOpen } from './proxy.ts';
 import { logs, terminal } from './terminal.ts';
 
@@ -22,7 +24,9 @@ class Refusal extends Error {
 
 const history = new History(config.dataDir);
 const access = new Access(config.dataDir);
+const alerts = new Alerts(config.dataDir);
 collect(history);
+monitor(alerts);
 
 const types: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -141,6 +145,9 @@ async function api(user: User, request: http.IncomingMessage, url: URL) {
   if (route === 'GET /api/me') {
     access.seen(user.login);
     return { ...user, grants: user.owner ? ['*'] : access.scopes(user.login), ssh: user.owner ? config.sshTarget : null };
+  }
+  if (route === 'GET /api/alerts') {
+    return { active: alerts.active(), recent: alerts.recent(), notifying: Boolean(config.alertsToken), repo: config.alertsRepo };
   }
   if (route === 'GET /api/docs') {
     return docs();
