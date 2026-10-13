@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import http from 'node:http';
 import { WebSocketServer } from 'ws';
-import { authenticate, callback, login, logout, type User } from './auth.ts';
+import { authenticate, callback, current, login, logout, recheckMs, type User } from './auth.ts';
 import { config } from './config.ts';
 import { docker } from './docker.ts';
 import { History } from './history.ts';
@@ -216,6 +216,17 @@ const server = http.createServer((request, response) => {
 
 const sockets = new WebSocketServer({ noServer: true });
 
+function closeWhenRevoked(user: User, ownerOnly: boolean, connection: { on(event: 'close', listener: () => void): unknown }, close: () => void) {
+  const timer = setInterval(() => {
+    void current(user.login).then((now) => {
+      if (!now || (ownerOnly && !now.owner)) {
+        close();
+      }
+    });
+  }, recheckMs);
+  connection.on('close', () => clearInterval(timer));
+}
+
 server.on('upgrade', (request, socket, head) => {
   void (async () => {
     const url = new URL(request.url ?? '/', config.appUrl);
@@ -228,14 +239,17 @@ server.on('upgrade', (request, socket, head) => {
     if (target) {
       requireOwner(user);
       await findContainer(user, target.container);
+      closeWhenRevoked(user, true, socket, () => socket.destroy());
       return openSocket(request, socket, head, target, url.search);
     }
     const container = url.searchParams.get('container') ?? '';
-    if (url.pathname === '/ws/terminal' || url.pathname === '/ws/host') {
+    const ownerOnly = url.pathname === '/ws/terminal' || url.pathname === '/ws/host';
+    if (ownerOnly) {
       requireOwner(user);
     }
     const found = url.pathname === '/ws/host' ? undefined : await findContainer(user, container);
     sockets.handleUpgrade(request, socket, head, (client) => {
+      closeWhenRevoked(user, ownerOnly, client, () => client.terminate());
       const run =
         url.pathname === '/ws/logs'
           ? logs(client, found!.id)

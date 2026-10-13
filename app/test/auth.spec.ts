@@ -1,6 +1,8 @@
 import { generateKeyPairSync, sign } from 'node:crypto';
-import { describe, expect, it } from 'vitest';
-import { seal, unseal, verifyAccess, withoutSession } from '../src/server/auth.ts';
+import type { IncomingMessage, ServerResponse } from 'node:http';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { authenticate, callback, current, recheckMs, seal, unseal, verifyAccess, withoutSession } from '../src/server/auth.ts';
+import { config } from '../src/server/config.ts';
 
 const access = { team: 'graphite', audience: 'console-aud' };
 const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
@@ -32,6 +34,56 @@ describe('sessions', () => {
 
   it('never forwards console cookies to a proxied app', () => {
     expect(withoutSession('console_session=a; theme=dark; console_state=b')).toBe(' theme=dark');
+  });
+});
+
+describe('organisation role', () => {
+  const dev = config.dev;
+  let membership: { status: number; role?: string };
+
+  afterEach(() => {
+    config.dev = dev;
+    config.github = undefined;
+    vi.unstubAllGlobals();
+  });
+
+  async function signIn() {
+    config.dev = undefined;
+    config.github = { clientId: 'id', clientSecret: 'secret' };
+    vi.stubGlobal('fetch', async (url: string) => {
+      const body = url.endsWith('/access_token')
+        ? { access_token: 'token' }
+        : url.endsWith('/user')
+          ? { login: 'demoted' }
+          : { state: 'active', role: membership.role };
+      return new Response(JSON.stringify(body), { status: url.includes('/memberships/') ? membership.status : 200 });
+    });
+    const set: string[] = [];
+    const response = { appendHeader: (_name: string, value: string) => set.push(value), writeHead: () => ({ end: () => undefined }) };
+    await callback(
+      { headers: { cookie: 'console_state=state' } } as IncomingMessage,
+      response as unknown as ServerResponse,
+      new URL('http://localhost:3000/auth/callback?state=state&code=code'),
+    );
+    const session = set.find((cookie) => cookie.startsWith('console_session='))!.split(';')[0];
+    return authenticate({ headers: { cookie: session } } as IncomingMessage);
+  }
+
+  it('takes owner rights away once GitHub reports the demotion', async () => {
+    membership = { status: 200, role: 'admin' };
+    expect(await signIn()).toEqual({ login: 'demoted', owner: true });
+    membership = { status: 200, role: 'member' };
+    expect(await current('demoted')).toEqual({ login: 'demoted', owner: true });
+    expect(await current('demoted', Date.now() + recheckMs + 1)).toEqual({ login: 'demoted', owner: false });
+  });
+
+  it('signs out someone removed from the organisation', async () => {
+    membership = { status: 200, role: 'member' };
+    await signIn();
+    membership = { status: 404 };
+    expect(await current('demoted', Date.now() + recheckMs + 1)).toBeUndefined();
+    membership = { status: 200, role: 'member' };
+    expect(await current('demoted', Date.now() + 2 * recheckMs)).toBeUndefined();
   });
 });
 

@@ -10,6 +10,9 @@ export interface User {
 const sessionCookie = 'console_session';
 const stateCookie = 'console_state';
 const sessionHours = 8;
+export const recheckMs = 60_000;
+
+const members = new Map<string, { token: string; owner: boolean; checked: number }>();
 
 function sign(value: string) {
   return createHmac('sha256', config.sessionSecret).update(value).digest('base64url');
@@ -87,7 +90,34 @@ export async function authenticate(request: IncomingMessage): Promise<User | und
   if (config.access && !(await verifyAccess(request.headers['cf-access-jwt-assertion'] as string | undefined, config.access))) {
     return undefined;
   }
-  return config.dev ?? unseal(cookies(request)[sessionCookie]);
+  const login = config.dev?.login ?? unseal(cookies(request)[sessionCookie])?.login;
+  return login ? current(login) : undefined;
+}
+
+export async function current(login: string, now = Date.now()): Promise<User | undefined> {
+  if (config.dev) {
+    return config.dev;
+  }
+  const member = members.get(login);
+  if (!member) {
+    return undefined;
+  }
+  if (now - member.checked > recheckMs) {
+    const owner = await role(member.token);
+    if (owner === undefined) {
+      members.delete(login);
+      return undefined;
+    }
+    Object.assign(member, { owner, checked: now });
+  }
+  return { login, owner: member.owner };
+}
+
+async function role(token: string) {
+  const membership = await github<{ state: string; role: string }>(`/user/memberships/orgs/${config.organisation}`, token).catch(
+    () => undefined,
+  );
+  return membership?.state === 'active' ? membership.role === 'admin' : undefined;
 }
 
 async function github<T>(path: string, token: string) {
@@ -134,15 +164,14 @@ export async function callback(request: IncomingMessage, response: ServerRespons
     return;
   }
   const user = await github<{ login: string }>('/user', token);
-  const membership = await github<{ state: string; role: string }>(`/user/memberships/orgs/${config.organisation}`, token).catch(
-    () => undefined,
-  );
-  if (membership?.state !== 'active') {
+  const owner = await role(token);
+  if (owner === undefined) {
     response.writeHead(403).end(`${user.login} is not a member of ${config.organisation}.`);
     return;
   }
+  members.set(user.login, { token, owner, checked: Date.now() });
   setCookie(response, stateCookie, '', 0);
-  setCookie(response, sessionCookie, seal({ login: user.login, owner: membership.role === 'admin' }), sessionHours * 3600);
+  setCookie(response, sessionCookie, seal({ login: user.login, owner }), sessionHours * 3600);
   response.writeHead(302, { Location: '/' }).end();
 }
 
