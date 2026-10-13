@@ -5,6 +5,7 @@ import { ContainerPage } from './pages/ContainerPage';
 import { HostShell } from './pages/HostShell';
 import { Images } from './pages/Images';
 import { Overview } from './pages/Overview';
+import { ProjectPage } from './pages/ProjectPage';
 import { Volumes } from './pages/Volumes';
 
 function useHash() {
@@ -29,6 +30,8 @@ function GraphiteMark() {
 function Page({ hash, user }: { hash: string; user: User }) {
   const container = /^\/container\/([0-9a-f]{12,64})$/.exec(hash);
   if (container) return <ContainerPage id={container[1]} user={user} />;
+  const project = /^\/project\/([a-z0-9-]+)$/.exec(hash);
+  if (project) return <ProjectPage key={project[1]} slug={project[1]} user={user} />;
   if (user.owner && hash === '/images') return <Images />;
   if (user.owner && hash === '/volumes') return <Volumes />;
   if (user.owner && hash === '/shell') return <HostShell />;

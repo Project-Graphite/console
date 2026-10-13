@@ -1,10 +1,11 @@
 import { EmptyState, ErrorState, Meter, PageHeader, TagChip } from '@project-graphite/ui';
-import { bytes, percent, type Host, type Overview as OverviewData, type Point, type Project } from '../api';
-import { Sparkline } from '../components/Sparkline';
+import { useState } from 'react';
+import { bytes, percent, type Host, type Overview as OverviewData, type Project } from '../api';
+import { Metrics } from '../components/Metrics';
+import { load, save } from '../stored';
 import { usePoll } from '../usePoll';
 
 function HostCards({ host }: { host: Host }) {
-  const { data: history } = usePoll<Point[]>('/api/history?target=host', 60_000);
   const cards = [
     { label: 'CPU', value: percent(host.cpu), detail: `${host.cpus} cores · load ${host.load.map((value) => value.toFixed(2)).join(' ')}`, ratio: host.cpu / 100 },
     { label: 'Memory', value: bytes(host.memory.used), detail: `of ${bytes(host.memory.total)}`, ratio: host.memory.used / host.memory.total },
@@ -21,57 +22,105 @@ function HostCards({ host }: { host: Host }) {
           <p className="mono-sm text-faint">{card.detail}</p>
         </div>
       ))}
-      <div className="stat-card sm:col-span-2 lg:col-span-4">
-        <p className="mono-sm mb-2 text-muted">CPU, last 24 hours</p>
-        <Sparkline label="Host CPU over the last 24 hours" max={100} values={(history ?? []).map((point) => point.cpu)} />
-      </div>
     </section>
   );
 }
 
-function ProjectCard({ project }: { project: Project }) {
+function Storage({ host, docker }: { host: Host; docker: NonNullable<OverviewData['docker']> }) {
+  const parts = [
+    { label: 'images', size: docker.images },
+    { label: 'volumes', size: docker.volumes },
+    { label: 'container layers', size: docker.containers },
+    { label: 'build cache', size: docker.buildCache },
+  ];
+  const other = Math.max(0, host.disk.used - parts.reduce((sum, part) => sum + part.size, 0));
   return (
-    <section className="stat-card">
-      <header className="mb-3 flex flex-wrap items-center gap-2">
-        <h2 className="text-lg">{project.slug}</h2>
-        {project.sleeps && <TagChip color={project.asleep ? 'gray' : 'teal'} label={project.asleep ? 'asleep' : 'awake'} />}
-      </header>
+    <section className="stat-card space-y-3">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className="mono-sm text-muted">Storage</h2>
+        <span className="mono-sm text-muted">
+          {bytes(host.disk.used)} of {bytes(host.disk.total)} · {bytes(host.disk.total - host.disk.used)} free
+        </span>
+      </div>
+      <Meter label="Disk" value={host.disk.used / host.disk.total} />
+      <dl className="grid gap-x-6 gap-y-1 text-sm sm:grid-cols-5">
+        {[...parts, { label: 'system and other', size: other }].map((part) => (
+          <div key={part.label}>
+            <dt className="mono-sm text-faint">{part.label}</dt>
+            <dd className="mono-sm">{bytes(part.size)}</dd>
+          </div>
+        ))}
+      </dl>
+    </section>
+  );
+}
+
+function status(project: Project) {
+  const running = project.containers.filter((container) => container.state === 'running').length;
+  const unhealthy = project.containers.some((container) => container.health === 'unhealthy');
+  if (project.asleep) return <TagChip color="gray" label="asleep" />;
+  if (unhealthy) return <TagChip color="red" label="unhealthy" />;
+  return <TagChip color={running === project.containers.length ? 'green' : 'yellow'} label={`${running}/${project.containers.length} running`} />;
+}
+
+function ProjectList({ projects }: { projects: Project[] }) {
+  const [filter, setFilter] = useState('');
+  const [pinned, setPinned] = useState<string[]>(() => load<string[]>('console.pinned', []));
+  const toggle = (slug: string) => {
+    const next = pinned.includes(slug) ? pinned.filter((entry) => entry !== slug) : [...pinned, slug];
+    setPinned(next);
+    save('console.pinned', next);
+  };
+  const shown = projects
+    .filter((project) => project.slug.includes(filter.trim().toLowerCase()))
+    .sort((a, b) => Number(pinned.includes(b.slug)) - Number(pinned.includes(a.slug)) || a.slug.localeCompare(b.slug));
+  return (
+    <section className="stat-card space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="mono-sm text-muted">Projects</h2>
+        <input aria-label="Filter projects" className="max-w-56" onChange={(event) => setFilter(event.target.value)} placeholder="Filter projects" type="search" value={filter} />
+      </div>
       <div className="overflow-x-auto">
         <table className="data-table">
           <thead>
             <tr>
-              <th>service</th>
-              <th>state</th>
+              <th aria-label="pinned" />
+              <th>project</th>
+              <th>status</th>
               <th>cpu</th>
               <th>memory</th>
-              <th>image</th>
+              <th>storage</th>
             </tr>
           </thead>
           <tbody>
-            {project.containers.map((container) => (
-              <tr key={container.id}>
+            {shown.map((project) => (
+              <tr key={project.slug}>
+                <td className="w-8">
+                  <button
+                    aria-label={pinned.includes(project.slug) ? `Unpin ${project.slug}` : `Pin ${project.slug}`}
+                    aria-pressed={pinned.includes(project.slug)}
+                    className={pinned.includes(project.slug) ? 'text-ink' : 'text-faint hover:text-muted'}
+                    onClick={() => toggle(project.slug)}
+                    type="button"
+                  >
+                    {pinned.includes(project.slug) ? '★' : '☆'}
+                  </button>
+                </td>
                 <td>
-                  <a className="rule-link" href={`#/container/${container.id.slice(0, 12)}`}>
-                    {container.service}
+                  <a className="rule-link" href={`#/project/${project.slug}`}>
+                    {project.slug}
                   </a>
                 </td>
-                <td>
-                  <TagChip
-                    color={container.state !== 'running' ? 'gray' : container.health === 'unhealthy' ? 'red' : 'green'}
-                    label={container.health ?? container.state}
-                  />
-                </td>
-                <td className="mono-sm">{percent(container.cpu)}</td>
-                <td className="mono-sm">
-                  {bytes(container.memory)}
-                  {container.memoryLimit ? <span className="text-faint"> / {bytes(container.memoryLimit)}</span> : null}
-                </td>
-                <td className="mono-sm max-w-64 truncate text-muted">{container.image.split('/').at(-1)}</td>
+                <td>{status(project)}</td>
+                <td className="mono-sm">{percent(project.cpu)}</td>
+                <td className="mono-sm">{bytes(project.memory)}</td>
+                <td className="mono-sm">{project.storage ? bytes(project.storage.volumes + project.storage.images) : '—'}</td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+      {shown.length === 0 && <p className="mono-sm text-faint">No project matches “{filter}”.</p>}
     </section>
   );
 }
@@ -85,10 +134,10 @@ export function Overview() {
     <div className="space-y-6">
       <PageHeader title="Overview" />
       {data?.host && <HostCards host={data.host} />}
+      {data?.host && <Metrics cpuMax={100} memoryMax={data.host.memory.total} query="target=host" />}
+      {data?.host && data.docker && <Storage docker={data.docker} host={data.host} />}
       {data && data.projects.length === 0 && <EmptyState title="No projects to show">Nothing you own runs on the VPS yet.</EmptyState>}
-      <div className="space-y-4">
-        {data?.projects.map((project) => <ProjectCard key={project.slug} project={project} />)}
-      </div>
+      {data && data.projects.length > 0 && <ProjectList projects={data.projects} />}
     </div>
   );
 }

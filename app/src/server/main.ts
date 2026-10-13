@@ -4,9 +4,8 @@ import { WebSocketServer } from 'ws';
 import { authenticate, callback, login, logout, type User } from './auth.ts';
 import { config } from './config.ts';
 import { docker } from './docker.ts';
-import { History } from './history.ts';
-import { hostStats } from './host.ts';
-import { containers, projects, sample, type ContainerView } from './inventory.ts';
+import { History, ranges, type Range } from './history.ts';
+import { collect, containers, diskUsage, projects, refresh, snapshot, type ContainerView } from './inventory.ts';
 import { open, openSocket, parseOpen } from './proxy.ts';
 import { projectsOf } from './registry.ts';
 import { logs, terminal } from './terminal.ts';
@@ -21,7 +20,7 @@ class Refusal extends Error {
 }
 
 const history = new History(config.dataDir);
-sample(history);
+collect(history);
 
 const types: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -62,19 +61,68 @@ async function findContainer(user: User, id: string) {
   return container;
 }
 
+async function visibleProjects(user: User) {
+  const visible = await scope(user);
+  const views = (await containers())
+    .filter((container) => allowed(visible, container))
+    .map((container) => (user.owner ? container : { ...container, networks: {} }));
+  return projects(views, await diskUsage());
+}
+
+async function findProject(user: User, slug: string) {
+  const project = (await visibleProjects(user)).find((candidate) => candidate.slug === slug);
+  if (!project) {
+    throw new Refusal(404, 'No such project.');
+  }
+  return project;
+}
+
+function rangeOf(url: URL) {
+  const range = url.searchParams.get('range') ?? '1d';
+  if (!(range in ranges)) {
+    throw new Refusal(400, `Unknown range ${range}.`);
+  }
+  return range as Range;
+}
+
 async function api(user: User, method: string, url: URL) {
   const route = `${method} ${url.pathname}`;
   if (route === 'GET /api/me') {
     return { ...user, ssh: user.owner ? config.sshTarget : null };
   }
   if (route === 'GET /api/overview') {
-    const visible = await scope(user);
-    const views = (await containers())
-      .filter((container) => allowed(visible, container))
-      .map((container) => (user.owner ? container : { ...container, networks: {} }));
-    return { host: user.owner ? await hostStats() : null, projects: projects(views) };
+    const [{ host }, usage, list] = await Promise.all([snapshot(), diskUsage(), visibleProjects(user)]);
+    return {
+      host: user.owner ? host : null,
+      docker: user.owner
+        ? {
+            images: usage.images,
+            containers: usage.containers,
+            buildCache: usage.buildCache,
+            volumes: usage.volumes.reduce((sum, volume) => sum + Math.max(0, volume.size), 0),
+          }
+        : null,
+      projects: list,
+    };
+  }
+  const project = /^GET \/api\/projects\/([a-z0-9-]+)$/.exec(route);
+  if (project) {
+    const [found, usage] = await Promise.all([findProject(user, project[1]), diskUsage()]);
+    const images = new Map<string, { id: string; name: string; size: number | null; usedBy: string[] }>();
+    for (const container of found.containers) {
+      const image = images.get(container.imageId) ?? { id: container.imageId, name: container.image, size: usage.imageSizes[container.imageId] ?? null, usedBy: [] };
+      image.usedBy.push(container.service);
+      images.set(container.imageId, image);
+    }
+    return { ...found, images: [...images.values()], volumes: usage.volumes.filter((volume) => volume.project === found.slug) };
   }
   if (route === 'GET /api/history') {
+    const range = rangeOf(url);
+    const slug = url.searchParams.get('project');
+    if (slug) {
+      const found = await findProject(user, slug);
+      return { ...ranges[range], series: found.containers.map((container) => ({ name: container.service, points: history.series(container.name, range) })) };
+    }
     const target = url.searchParams.get('target') ?? '';
     if (target === 'host') {
       requireOwner(user);
@@ -85,7 +133,7 @@ async function api(user: User, method: string, url: URL) {
         throw new Refusal(404, 'No such container.');
       }
     }
-    return history.series(target);
+    return { ...ranges[range], series: [{ name: target, points: history.series(target, range) }] };
   }
 
   requireOwner(user);
@@ -103,23 +151,7 @@ async function api(user: User, method: string, url: URL) {
     }));
   }
   if (route === 'GET /api/disk') {
-    const df = await docker<{
-      LayersSize: number;
-      Containers: { SizeRw?: number }[];
-      Volumes: { Name: string; Labels: Record<string, string> | null; UsageData: { Size: number; RefCount: number } }[];
-      BuildCache: { Size: number }[] | null;
-    }>('GET', '/system/df');
-    return {
-      images: df.LayersSize,
-      containers: df.Containers.reduce((sum, container) => sum + (container.SizeRw ?? 0), 0),
-      buildCache: (df.BuildCache ?? []).reduce((sum, entry) => sum + entry.Size, 0),
-      volumes: df.Volumes.map((volume) => ({
-        name: volume.Name,
-        project: volume.Labels?.['com.docker.compose.project'] ?? null,
-        size: volume.UsageData.Size,
-        inUse: volume.UsageData.RefCount > 0,
-      })),
-    };
+    return diskUsage();
   }
   if (route === 'POST /api/prune') {
     const result = await docker<{ SpaceReclaimed: number }>('POST', `/images/prune?filters=${encodeURIComponent('{"dangling":["true"]}')}`);
@@ -129,6 +161,7 @@ async function api(user: User, method: string, url: URL) {
   if (action) {
     const container = await findContainer(user, action[1]);
     await docker('POST', `/containers/${container.id}/${action[2]}`);
+    await refresh();
     return { ok: true };
   }
   const wake = /^POST \/api\/projects\/([a-z0-9-]+)\/wake$/.exec(route);
@@ -139,6 +172,7 @@ async function api(user: User, method: string, url: URL) {
     if (!response.ok) {
       throw new Refusal(502, `Sablier answered ${response.status}.`);
     }
+    await refresh();
     return { ok: true };
   }
   throw new Refusal(404, 'Not found.');

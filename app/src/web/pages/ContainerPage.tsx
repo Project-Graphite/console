@@ -1,9 +1,9 @@
 import { ConfirmDialog, ErrorState, PageHeader, TagChip, timeAgo } from '@project-graphite/ui';
 import { useState } from 'react';
-import { bytes, percent, post, type Container, type Overview, type Point, type User } from '../api';
+import { post, type Container, type Overview, type User } from '../api';
 import { Logs } from '../components/Logs';
-import { Sparkline } from '../components/Sparkline';
 import { LazyTerminal } from '../components/LazyTerminal';
+import { Metrics } from '../components/Metrics';
 import { usePoll } from '../usePoll';
 
 function Actions({ container, project, sleeps }: { container: Container; project: string; sleeps: boolean }) {
@@ -79,7 +79,6 @@ export function ContainerPage({ id, user }: { id: string; user: User }) {
   const [shell, setShell] = useState(false);
   const project = data?.projects.find((candidate) => candidate.containers.some((container) => container.id.startsWith(id)));
   const container = project?.containers.find((candidate) => candidate.id.startsWith(id));
-  const { data: history } = usePoll<Point[]>(`/api/history?target=${container?.name ?? ''}`, 60_000);
 
   if (error && !data) {
     return <ErrorState title="The console could not read the VPS">{error.message}</ErrorState>;
@@ -95,7 +94,7 @@ export function ContainerPage({ id, user }: { id: string; user: User }) {
     <div className="space-y-6">
       <PageHeader
         actions={user.owner && <Actions container={container} project={project.slug} sleeps={project.sleeps} />}
-        eyebrow={<a className="rule-link" href="#/">{project.slug}</a>}
+        eyebrow={<a className="rule-link" href={`#/project/${project.slug}`}>{project.slug}</a>}
         title={container.service}
       >
         <span className="flex flex-wrap items-center gap-2">
@@ -104,19 +103,7 @@ export function ContainerPage({ id, user }: { id: string; user: User }) {
         </span>
       </PageHeader>
 
-      <section className="grid gap-3 sm:grid-cols-2">
-        <div className="stat-card space-y-2">
-          <p className="mono-sm text-muted">CPU now {percent(container.cpu)}</p>
-          <Sparkline label="CPU over the last 24 hours" max={100} values={(history ?? []).map((point) => point.cpu)} />
-        </div>
-        <div className="stat-card space-y-2">
-          <p className="mono-sm text-muted">
-            Memory now {bytes(container.memory)}
-            {container.memoryLimit ? ` of ${bytes(container.memoryLimit)}` : ''}
-          </p>
-          <Sparkline label="Memory over the last 24 hours" max={container.memoryLimit ?? undefined} values={(history ?? []).map((point) => point.memory)} />
-        </div>
-      </section>
+      <Metrics memoryMax={container.memoryLimit ?? undefined} query={`target=${container.name}`} />
 
       <section className="stat-card">
         <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-[auto_1fr]">

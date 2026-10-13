@@ -12,7 +12,8 @@ the host. It runs at `https://console.project-graphite.com` behind Cloudflare Ac
 ## Stack
 
 A Node 24 server talks to the Docker Engine API over `/var/run/docker.sock`, reads host usage from
-`/proc`, keeps 24 hours of samples in `node:sqlite`, and serves a React page built with
+`/proc`, samples every container every 5 seconds in the background, keeps 30 days of per-minute
+history in `node:sqlite`, and serves a React page built with
 `@project-graphite/ui`. Terminals are xterm.js over WebSockets into Docker exec sessions. The host
 shell is an exec into the console's own container running `nsenter` into the host's PID 1, so the
 container runs privileged with `pid: host`.

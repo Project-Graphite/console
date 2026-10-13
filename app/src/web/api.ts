@@ -10,6 +10,7 @@ export interface Container {
   project: string;
   service: string;
   image: string;
+  imageId: string;
   state: string;
   status: string;
   health: string | null;
@@ -26,7 +27,22 @@ export interface Project {
   slug: string;
   sleeps: boolean;
   asleep: boolean;
+  cpu: number | null;
+  memory: number | null;
+  storage: { volumes: number; images: number } | null;
   containers: Container[];
+}
+
+export interface Volume {
+  name: string;
+  project: string | null;
+  size: number;
+  inUse: boolean;
+}
+
+export interface ProjectDetail extends Project {
+  images: { id: string; name: string; size: number | null; usedBy: string[] }[];
+  volumes: Volume[];
 }
 
 export interface Usage {
@@ -46,6 +62,7 @@ export interface Host {
 
 export interface Overview {
   host: Host | null;
+  docker: { images: number; containers: number; buildCache: number; volumes: number } | null;
   projects: Project[];
 }
 
@@ -53,6 +70,20 @@ export interface Point {
   at: number;
   cpu: number;
   memory: number;
+}
+
+export interface Series {
+  name: string;
+  points: Point[];
+}
+
+export const ranges = ['1h', '5h', '1d', '7d', '30d'] as const;
+export type Range = (typeof ranges)[number];
+
+export interface HistoryData {
+  span: number;
+  step: number;
+  series: Series[];
 }
 
 export interface Image {
@@ -67,7 +98,7 @@ export interface Disk {
   images: number;
   containers: number;
   buildCache: number;
-  volumes: { name: string; project: string | null; size: number; inUse: boolean }[];
+  volumes: Volume[];
 }
 
 export class Unauthorized extends Error {}

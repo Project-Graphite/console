@@ -2,10 +2,30 @@ import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
-export const keep = 24 * 60 * 60 * 1000;
+const minute = 60_000;
+const hour = 60 * minute;
+const day = 24 * hour;
+
+export const ranges = {
+  '1h': { span: hour, step: minute },
+  '5h': { span: 5 * hour, step: minute },
+  '1d': { span: day, step: 5 * minute },
+  '7d': { span: 7 * day, step: 30 * minute },
+  '30d': { span: 30 * day, step: 2 * hour },
+} as const;
+
+export type Range = keyof typeof ranges;
+
+export const keep = ranges['30d'].span;
 
 export interface Sample {
   target: string;
+  cpu: number;
+  memory: number;
+}
+
+export interface Point {
+  at: number;
   cpu: number;
   memory: number;
 }
@@ -19,6 +39,7 @@ export class History {
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS samples (at INTEGER NOT NULL, target TEXT NOT NULL, cpu REAL NOT NULL, memory INTEGER NOT NULL);
       CREATE INDEX IF NOT EXISTS samples_target_at ON samples (target, at);
+      CREATE INDEX IF NOT EXISTS samples_at ON samples (at);
     `);
   }
 
@@ -30,10 +51,14 @@ export class History {
     this.db.prepare('DELETE FROM samples WHERE at < ?').run(at - keep);
   }
 
-  series(target: string) {
+  series(target: string, range: Range = '1d', now = Date.now()) {
+    const { span, step } = ranges[range];
     return this.db
-      .prepare('SELECT at, cpu, memory FROM samples WHERE target = ? ORDER BY at')
-      .all(target) as { at: number; cpu: number; memory: number }[];
+      .prepare(
+        `SELECT CAST(at / ? AS INTEGER) * ? AS at, avg(cpu) AS cpu, CAST(avg(memory) AS INTEGER) AS memory
+         FROM samples WHERE target = ? AND at > ? GROUP BY 1 ORDER BY 1`,
+      )
+      .all(step, step, target, now - span) as unknown as Point[];
   }
 
   close() {
