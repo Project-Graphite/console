@@ -1,9 +1,22 @@
-name: project-template
+name: console
 
 services:
-  web:
-    build: ./web
+  app:
+    build: ./app
+    environment:
+      NODE_ENV: development
+      APP_URL: http://localhost:3000
+      SESSION_SECRET: local-session-secret
+      DEV_LOGIN: ${DEV_LOGIN:-local-owner}
+      DEV_ROLE: ${DEV_ROLE:-owner}
+      SABLIER_URL: http://sablier:10000
     ports:
-      - "8080:80"
+      - "3000:3000"
     volumes:
-      - ./web/index.html:/usr/share/nginx/html/index.html:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+      - data:/data
+    privileged: true
+    pid: host
+
+volumes:
+  data:

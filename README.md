@@ -1,58 +1,74 @@
-# Project name
+# Graphite Console
 
-One sentence on what this is and who it is for.
+One web page for the Project Graphite VPS: every project's containers, images and volumes, live
+and 24-hour CPU and memory, host disk and swap, live logs, container shells and a root shell on
+the host. It runs at `https://console.project-graphite.com` behind Cloudflare Access.
+
+| Who | Sees | Can |
+| :--- | :--- | :--- |
+| Organisation owners | everything: host, every project, images, volumes | start, stop, restart, wake, prune dangling images, container shells, the host shell, open a container's web port |
+| Other organisation members | containers of the projects they own or author in the registry | read state, usage, history and logs |
 
 ## Stack
 
-What it is built with, and anything unusual about how it fits together.
+A Node 24 server talks to the Docker Engine API over `/var/run/docker.sock`, reads host usage from
+`/proc`, keeps 24 hours of samples in `node:sqlite`, and serves a React page built with
+`@project-graphite/ui`. Terminals are xterm.js over WebSockets into Docker exec sessions. The host
+shell is an exec into the console's own container running `nsenter` into the host's PID 1, so the
+container runs privileged with `pid: host`.
+
+Sign-in is two layers:
+
+1. **Cloudflare Access** admits only Project-Graphite members. The server verifies the
+   `Cf-Access-Jwt-Assertion` header itself.
+2. **GitHub sign-in** names the user. An organisation admin is an owner, and anyone else sees only
+   their registry projects.
 
 ## Running it
 
 ```sh
-docker compose up
+docker compose up --build
 ```
 
-Then open http://localhost:8080.
+Then open http://localhost:3000. Locally there is no Access or GitHub sign-in: `DEV_LOGIN` names
+the user and `DEV_ROLE=contributor` shows the contributor view. The local stack talks to your own
+Docker, so its shells and actions act on your machine.
+
+For the page with hot reload, keep that container running and serve the page from your machine:
+
+```sh
+cd app
+npm ci
+npm run dev
+```
+
+Vite proxies `/api`, `/auth`, `/open` and `/ws` to the container on port 3000.
+
+## Commands
+
+| Command | What it does |
+| :--- | :--- |
+| `npm run build` | Type-check, build the server to `dist/server` and the page to `dist/web` |
+| `npm test` | Unit tests |
+| `npm run lint` | oxlint |
+
+## Production
+
+`platform/deploy/console/values.yaml` deploys it. It needs these values in the `secrets`
+repository:
+
+| Name | Value |
+| :--- | :--- |
+| `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | a GitHub OAuth App owned by the organisation, callback `https://console.project-graphite.com/auth/callback` |
+| `SESSION_SECRET` | 32 or more random bytes, e.g. `openssl rand -base64 48` |
+| `ACCESS_TEAM` | the Zero Trust team name, the `<team>` in `<team>.cloudflareaccess.com` |
+| `ACCESS_AUD` | the Access application's audience tag |
 
 ## Layout
 
-| Folder | What it is |
+| Path | Purpose |
 | :--- | :--- |
-| `web/` | Replace with the real services |
-
-## Setting up
-
-Delete this section once the checklist is done.
-
-1. Replace the registry entry in `.graphite.yml`, which is the template's own. Set `slug` to the
-   lowercase repository name and update `name`, `summary`, `tags`, `owner`, `authors`, `status`,
-   `listed`, and `deploy`. Pushing it to `main` registers the project through the Registry workflow.
-2. Rename the placeholder service. Every top-level folder containing a `Dockerfile` is a deployable
-   service and is built and pushed automatically. Point the docker entry's `directory` in
-   `.github/dependabot.yml` at each service folder, one entry per service.
-3. Give each service its checks. A folder with a `package.json` gets `npm ci` followed by available
-   `lint`, `test`, and `build` scripts. A folder with a `Makefile` must provide `install`, `lint`, and
-   `test` targets.
-4. Update `compose.yaml` for local development, with its bind mounts, hot reload, and development
-   ports. Update `compose.production.yaml` to pull the prebuilt GHCR images,
-   define health checks and persistent volumes, avoid published host ports, and cap CPU and memory.
-5. Add a screenshot or short GIF, the eventual live link, the stack, and clear local instructions
-   to this README.
-
-Use named service folders even for a single-service project. Images are published as
-`ghcr.io/project-graphite/<repo>/<service>`, and each image name must match its service in the
-production Compose file.
-
-`.github/workflows/pipeline.yml` runs the shared `reusable-pipeline.yml`. Turn a stage off with its
-switch, e.g. `with: { changelog: false }`, or replace the file with calls to the individual shared
-workflows.
-
-Until the platform entry is merged, the `Deploy` job on `main` fails with a clear message. Builds
-and checks continue. Once the repository has the `COOLIFY_WEBHOOK` and `COOLIFY_TOKEN` secrets, the
-same job deploys to Coolify.
-
-## Conventions
-
-Pull request titles follow `type(scope): summary` using one of `feat fix chore refactor docs test ci
-perf revert style build`. Squash merges put the title into the history of `main`, so the title
-matters more than the branch name.
+| `app/src/server/` | HTTP and WebSocket server, Docker client, auth, history |
+| `app/src/web/` | the React page |
+| `app/test/` | unit tests |
+| `compose.yaml` | local run against your own Docker |

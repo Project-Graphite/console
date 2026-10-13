@@ -1,0 +1,30 @@
+@import 'tailwindcss';
+@import '@project-graphite/ui/theme.css';
+@import '@xterm/xterm/css/xterm.css';
+@source '../../node_modules/@project-graphite/ui/dist';
+
+@layer components {
+  .stat-card {
+    @apply rounded-xl border border-line bg-surface p-4;
+  }
+
+  .data-table {
+    @apply w-full text-left text-sm;
+  }
+
+  .data-table th {
+    @apply border-b border-line px-3 py-2 font-normal text-muted;
+  }
+
+  .data-table td {
+    @apply border-b border-line-soft px-3 py-2 align-middle;
+  }
+
+  .terminal-frame {
+    @apply overflow-hidden rounded-xl border border-line bg-black p-2;
+  }
+
+  .log-frame {
+    @apply max-h-[28rem] overflow-auto rounded-xl border border-line bg-black p-3 font-mono text-xs leading-relaxed whitespace-pre-wrap text-ink;
+  }
+}
