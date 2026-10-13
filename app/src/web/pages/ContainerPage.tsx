@@ -1,6 +1,6 @@
 import { ConfirmDialog, ErrorState, PageHeader, TagChip, timeAgo } from '@project-graphite/ui';
 import { useState } from 'react';
-import { can, post, type Container, type Overview, type User } from '../api';
+import { can, post, stateColor, stateOf, type Container, type Overview, type User } from '../api';
 import { Logs } from '../components/Logs';
 import { LazyTerminal } from '../components/LazyTerminal';
 import { Metrics } from '../components/Metrics';
@@ -99,7 +99,7 @@ export function ContainerPage({ id, user }: { id: string; user: User }) {
         title={container.service}
       >
         <span className="flex flex-wrap items-center gap-2">
-          <TagChip color={container.state === 'running' ? 'green' : 'gray'} label={container.health ?? container.state} />
+          <TagChip color={stateColor(container)} label={stateOf(container)} />
           <span className="mono-sm text-muted">{container.status}</span>
         </span>
       </PageHeader>

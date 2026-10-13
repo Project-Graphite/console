@@ -1,6 +1,6 @@
 import { ErrorState, PageHeader, TagChip } from '@project-graphite/ui';
 import { useState } from 'react';
-import { bytes, can, percent, post, type ProjectDetail, type User } from '../api';
+import { bytes, can, percent, post, shortImage, stateColor, stateOf, type ProjectDetail, type User } from '../api';
 import { Metrics } from '../components/Metrics';
 import { usePoll } from '../usePoll';
 
@@ -73,18 +73,15 @@ export function ProjectPage({ slug, user }: { slug: string; user: User }) {
                       {container.service}
                     </a>
                   </td>
-                  <td>
-                    <TagChip
-                      color={container.state !== 'running' ? 'gray' : container.health === 'unhealthy' ? 'red' : 'green'}
-                      label={container.health ?? container.state}
-                    />
+                  <td className="whitespace-nowrap">
+                    <TagChip color={stateColor(container)} label={stateOf(container)} />
                   </td>
-                  <td className="mono-sm">{percent(container.cpu)}</td>
-                  <td className="mono-sm">
+                  <td className="mono-sm whitespace-nowrap">{percent(container.cpu)}</td>
+                  <td className="mono-sm whitespace-nowrap">
                     {bytes(container.memory)}
                     {container.memoryLimit ? <span className="text-faint"> / {bytes(container.memoryLimit)}</span> : null}
                   </td>
-                  <td className="mono-sm max-w-64 truncate text-muted">{container.image.split('/').at(-1)}</td>
+                  <td className="mono-sm max-w-64 truncate text-muted" title={container.image}>{shortImage(container.image)}</td>
                 </tr>
               ))}
             </tbody>
@@ -106,8 +103,8 @@ export function ProjectPage({ slug, user }: { slug: string; user: User }) {
             <tbody>
               {project.images.map((image) => (
                 <tr key={image.id}>
-                  <td className="mono-sm break-all">{image.name.split('/').at(-1)}</td>
-                  <td className="mono-sm">{bytes(image.size)}</td>
+                  <td className="mono-sm break-all" title={image.name}>{shortImage(image.name)}</td>
+                  <td className="mono-sm whitespace-nowrap">{bytes(image.size)}</td>
                   <td className="mono-sm text-muted">{image.usedBy.join(', ')}</td>
                 </tr>
               ))}
@@ -133,7 +130,7 @@ export function ProjectPage({ slug, user }: { slug: string; user: User }) {
                   .map((volume) => (
                     <tr key={volume.name}>
                       <td className="mono-sm break-all">{volume.name.replace(`${slug}_`, '')}</td>
-                      <td className="mono-sm">{volume.size >= 0 ? bytes(volume.size) : '—'}</td>
+                      <td className="mono-sm whitespace-nowrap">{volume.size >= 0 ? bytes(volume.size) : '—'}</td>
                       <td className="text-muted">{volume.inUse ? 'yes' : 'no'}</td>
                     </tr>
                   ))}

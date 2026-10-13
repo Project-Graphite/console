@@ -85,10 +85,10 @@ export function Chart({ label, series, metric, span, step, now, format, max }: C
     setHover(at >= start && at <= now ? { at, name: nearest?.name, x: x(at) } : undefined);
   };
 
-  const ticks = [0, 0.25, 0.5, 0.75, 1].map((fraction) => start + fraction * span);
+  const ticks = (width < 480 ? [0, 0.5, 1] : [0, 0.25, 0.5, 0.75, 1]).map((fraction) => start + fraction * span);
 
   return (
-    <div className="relative" ref={ref}>
+    <div className="relative min-w-0" ref={ref}>
       <p className="mono-sm mb-1 text-muted">{label}</p>
       {plotted.length === 0 ? (
         <p className="mono-sm flex h-[180px] items-center justify-center text-faint">collecting history…</p>

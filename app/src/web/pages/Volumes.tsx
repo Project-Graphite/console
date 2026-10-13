@@ -28,7 +28,7 @@ export function Volumes() {
               <tr key={volume.name}>
                 <td className="mono-sm break-all">{volume.name}</td>
                 <td className="text-muted">{volume.project ?? '—'}</td>
-                <td className="mono-sm">{volume.size >= 0 ? bytes(volume.size) : '—'}</td>
+                <td className="mono-sm whitespace-nowrap">{volume.size >= 0 ? bytes(volume.size) : '—'}</td>
                 <td className="text-muted">{volume.inUse ? 'yes' : 'no'}</td>
               </tr>
             ))}

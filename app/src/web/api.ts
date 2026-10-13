@@ -151,11 +151,27 @@ export function bytes(value: number | null | undefined) {
     size /= 1024;
     unit += 1;
   }
-  return `${size.toFixed(size >= 10 || unit === 0 ? 0 : 1)} ${units[unit]}`;
+  return `${size.toFixed(size >= 10 || unit === 0 ? 0 : 1).replace(/[.]0$/, '')} ${units[unit]}`;
 }
 
 export function percent(value: number | null | undefined) {
-  return value === null || value === undefined ? '—' : `${value.toFixed(value >= 10 ? 0 : 1)}%`;
+  return value === null || value === undefined ? '—' : `${value.toFixed(value >= 10 ? 0 : 1).replace(/[.]0$/, '')}%`;
+}
+
+export function completed(container: Container) {
+  return container.state === 'exited' && container.status.startsWith('Exited (0)') && !container.sleeps;
+}
+
+export function stateOf(container: Container) {
+  return completed(container) ? 'completed' : (container.health ?? container.state);
+}
+
+export function stateColor(container: Container) {
+  return container.state !== 'running' ? 'gray' : container.health === 'unhealthy' ? 'red' : 'green';
+}
+
+export function shortImage(image: string) {
+  return image.split('/').at(-1)!.replace(/@sha256:([0-9a-f]{12})[0-9a-f]+/, '@sha256:$1…');
 }
 
 export function socketUrl(path: string) {

@@ -1,6 +1,6 @@
 import { ConfirmDialog, ErrorState, PageHeader, timeAgo } from '@project-graphite/ui';
 import { useState } from 'react';
-import { bytes, can, type Disk, type Image, post, type User } from '../api';
+import { bytes, can, type Disk, type Image, post, shortImage, type User } from '../api';
 import { usePoll } from '../usePoll';
 
 export function Images({ user }: { user: User }) {
@@ -46,8 +46,8 @@ export function Images({ user }: { user: User }) {
           <tbody>
             {(images.data ?? []).map((image) => (
               <tr key={image.id}>
-                <td className="mono-sm break-all">{image.tags.join(', ') || image.id.slice(7, 19)}</td>
-                <td className="mono-sm">{bytes(image.size)}</td>
+                <td className="mono-sm break-all" title={image.tags.join(', ')}>{image.tags.map(shortImage).join(', ') || image.id.slice(7, 19)}</td>
+                <td className="mono-sm whitespace-nowrap">{bytes(image.size)}</td>
                 <td className="text-muted">{timeAgo(new Date(image.created).toISOString())}</td>
                 <td className="mono-sm text-muted">{image.usedBy.join(', ') || '—'}</td>
               </tr>

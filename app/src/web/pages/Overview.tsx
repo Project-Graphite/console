@@ -1,6 +1,6 @@
 import { EmptyState, ErrorState, Meter, PageHeader, TagChip } from '@project-graphite/ui';
 import { useState } from 'react';
-import { bytes, percent, type Host, type Overview as OverviewData, type Project } from '../api';
+import { bytes, completed, percent, type Host, type Overview as OverviewData, type Project } from '../api';
 import { Metrics } from '../components/Metrics';
 import { load, save } from '../stored';
 import { usePoll } from '../usePoll';
@@ -56,11 +56,12 @@ function Storage({ host, docker }: { host: Host; docker: NonNullable<OverviewDat
 }
 
 function status(project: Project) {
-  const running = project.containers.filter((container) => container.state === 'running').length;
-  const unhealthy = project.containers.some((container) => container.health === 'unhealthy');
+  const services = project.containers.filter((container) => !completed(container));
+  const running = services.filter((container) => container.state === 'running').length;
+  const unhealthy = services.some((container) => container.health === 'unhealthy');
   if (project.asleep) return <TagChip color="gray" label="asleep" />;
   if (unhealthy) return <TagChip color="red" label="unhealthy" />;
-  return <TagChip color={running === project.containers.length ? 'green' : 'yellow'} label={`${running}/${project.containers.length} running`} />;
+  return <TagChip color={running === services.length ? 'green' : 'yellow'} label={`${running}/${services.length} running`} />;
 }
 
 function ProjectList({ projects }: { projects: Project[] }) {
@@ -111,10 +112,10 @@ function ProjectList({ projects }: { projects: Project[] }) {
                     {project.slug}
                   </a>
                 </td>
-                <td>{status(project)}</td>
-                <td className="mono-sm">{percent(project.cpu)}</td>
-                <td className="mono-sm">{bytes(project.memory)}</td>
-                <td className="mono-sm">{project.storage ? bytes(project.storage.volumes + project.storage.images) : '—'}</td>
+                <td className="whitespace-nowrap">{status(project)}</td>
+                <td className="mono-sm whitespace-nowrap">{percent(project.cpu)}</td>
+                <td className="mono-sm whitespace-nowrap">{bytes(project.memory)}</td>
+                <td className="mono-sm whitespace-nowrap">{project.storage ? bytes(project.storage.volumes + project.storage.images) : '—'}</td>
               </tr>
             ))}
           </tbody>

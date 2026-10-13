@@ -60,36 +60,23 @@ export function Admin() {
           opens its terminals and ports, and takes effect at once.
         </span>
       </PageHeader>
-      <div className="stat-card overflow-x-auto">
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>member</th>
-              <th>last seen</th>
-              <th>write access</th>
-            </tr>
-          </thead>
-          <tbody>
-            {(members.data ?? []).map((member) => (
-              <tr key={member.login}>
-                <td className="align-top">
-                  <span className="flex flex-wrap items-center gap-2">
-                    <span className="mono-sm">{member.login}</span>
-                    {member.owner && <TagChip color="teal" label="owner" />}
-                  </span>
-                </td>
-                <td className="align-top text-muted">{member.seen ? timeAgo(new Date(member.seen).toISOString()) : 'never'}</td>
-                <td>
-                  {member.owner ? (
-                    <span className="text-sm text-muted">everything, as an owner</span>
-                  ) : (
-                    <Access key={member.scopes.join()} member={member} onSaved={() => void members.reload()} projects={projects} />
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="space-y-3">
+        {(members.data ?? []).map((member) => (
+          <section className="stat-card space-y-3" key={member.login}>
+            <header className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <span className="mono-sm">{member.login}</span>
+              {member.owner && <TagChip color="teal" label="owner" />}
+              <span className="mono-sm text-faint">
+                {member.seen ? `last seen ${timeAgo(new Date(member.seen).toISOString())}` : 'never signed in'}
+              </span>
+            </header>
+            {member.owner ? (
+              <p className="text-sm text-muted">Everything, as an owner.</p>
+            ) : (
+              <Access key={member.scopes.join()} member={member} onSaved={() => void members.reload()} projects={projects} />
+            )}
+          </section>
+        ))}
       </div>
     </div>
   );

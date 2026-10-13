@@ -59,10 +59,18 @@ export function Docs({ path }: { path: string }) {
     return null;
   }
   return (
-    <div className="grid gap-6 lg:grid-cols-[15rem_1fr]">
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-[15rem_1fr]">
       <aside className="space-y-4 lg:sticky lg:top-4 lg:max-h-[calc(100vh-6rem)] lg:self-start lg:overflow-y-auto">
         <input aria-label="Search the handbook" className="w-full" onChange={(event) => setFilter(event.target.value)} placeholder="Search the handbook" type="search" value={filter} />
-        <Navigation current={current} filter={filter} pages={data} />
+        <div className="hidden lg:block">
+          <Navigation current={current} filter={filter} pages={data} />
+        </div>
+        <details className="lg:hidden" key={`${current}-${filter !== ''}`} open={filter !== ''}>
+          <summary className="mono-sm cursor-pointer text-muted">Pages · {page?.title ?? current}</summary>
+          <div className="mt-3">
+            <Navigation current={current} filter={filter} pages={data} />
+          </div>
+        </details>
       </aside>
       {page && html ? (
         <article className="min-w-0 space-y-4">

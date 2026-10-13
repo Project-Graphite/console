@@ -70,8 +70,8 @@ export function App() {
     <AppShell
       actions={
         user && (
-          <span className="flex items-center gap-3">
-            <span className="mono-sm text-muted">
+          <span className="flex items-center gap-3 whitespace-nowrap">
+            <span className="mono-sm hidden text-muted sm:inline">
               {user.login} · {user.owner ? 'owner' : 'member'}
             </span>
             <a className="mono-sm rule-link" href="/auth/logout">
