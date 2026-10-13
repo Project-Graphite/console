@@ -112,6 +112,7 @@ export class Unauthorized extends Error {}
 async function request<T>(method: string, path: string) {
   const response = await fetch(path, { method, headers: { Accept: 'application/json' } });
   if (response.status === 401) {
+    location.assign('/auth/login');
     throw new Unauthorized();
   }
   if (!response.ok) {

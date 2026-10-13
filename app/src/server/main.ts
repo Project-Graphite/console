@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import http from 'node:http';
 import { WebSocketServer } from 'ws';
-import { authenticate, callback, login, logout, type User } from './auth.ts';
+import { authenticate, callback, githubToken, login, logout, ownsNow, sessionMs, type User } from './auth.ts';
 import { config } from './config.ts';
 import { docker } from './docker.ts';
 import { docs } from './docs.ts';
@@ -43,6 +43,35 @@ function requireOwner(user: User) {
   if (!user.owner) {
     throw new Refusal(403, 'Only organisation owners can do that.');
   }
+}
+
+const ownerSockets = new Map<string, Set<() => void>>();
+
+async function requireCurrentOwner(request: http.IncomingMessage, user: User) {
+  requireOwner(user);
+  if (!(await ownsNow(githubToken(request)))) {
+    for (const close of ownerSockets.get(user.login) ?? []) {
+      close();
+    }
+    throw new Refusal(403, 'You are no longer an organisation owner. Sign in again.');
+  }
+}
+
+function closeWhenNotOwner(request: http.IncomingMessage, user: User, connection: { on(event: 'close', listener: () => void): unknown }, close: () => void) {
+  const token = githubToken(request);
+  const held = ownerSockets.get(user.login) ?? new Set();
+  ownerSockets.set(user.login, held.add(close));
+  const timer = setInterval(() => {
+    void ownsNow(token).then((owner) => {
+      if (!owner) {
+        close();
+      }
+    });
+  }, sessionMs);
+  connection.on('close', () => {
+    clearInterval(timer);
+    held.delete(close);
+  });
 }
 
 async function scope(user: User) {
@@ -224,13 +253,16 @@ async function handle(request: http.IncomingMessage, response: http.ServerRespon
 
   const target = parseOpen(url.pathname);
   if (target) {
-    requireOwner(user);
+    await requireCurrentOwner(request, user);
     await findContainer(user, target.container);
     return open(request, response, target, url.search);
   }
   if (url.pathname.startsWith('/api/')) {
     if (request.method === 'POST' && request.headers.origin && request.headers.origin !== new URL(config.appUrl).origin) {
       throw new Refusal(403, 'Cross-origin requests are refused.');
+    }
+    if (request.method === 'POST') {
+      await requireCurrentOwner(request, user);
     }
     const body = await api(user, request.method ?? 'GET', url);
     response.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify(body));
@@ -264,16 +296,21 @@ server.on('upgrade', (request, socket, head) => {
     }
     const target = parseOpen(url.pathname);
     if (target) {
-      requireOwner(user);
+      await requireCurrentOwner(request, user);
       await findContainer(user, target.container);
+      closeWhenNotOwner(request, user, socket, () => socket.destroy());
       return openSocket(request, socket, head, target, url.search);
     }
     const container = url.searchParams.get('container') ?? '';
-    if (url.pathname === '/ws/terminal' || url.pathname === '/ws/host') {
-      requireOwner(user);
+    const ownerOnly = url.pathname === '/ws/terminal' || url.pathname === '/ws/host';
+    if (ownerOnly) {
+      await requireCurrentOwner(request, user);
     }
     const found = url.pathname === '/ws/host' ? undefined : await findContainer(user, container);
     sockets.handleUpgrade(request, socket, head, (client) => {
+      if (ownerOnly) {
+        closeWhenNotOwner(request, user, client, () => client.terminate());
+      }
       const run =
         url.pathname === '/ws/logs'
           ? logs(client, found!.id)

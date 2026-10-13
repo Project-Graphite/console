@@ -1,4 +1,4 @@
-import { createHmac, createPublicKey, randomBytes, timingSafeEqual, verify, type webcrypto } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHash, createPublicKey, randomBytes, verify, type webcrypto } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { config } from './config.ts';
 
@@ -9,29 +9,69 @@ export interface User {
 
 const sessionCookie = 'console_session';
 const stateCookie = 'console_state';
-const sessionHours = 8;
+export const sessionMs = 3600_000;
+const key = createHash('sha256').update(config.sessionSecret).digest();
 
-function sign(value: string) {
-  return createHmac('sha256', config.sessionSecret).update(value).digest('base64url');
+type Session = User & { github?: string };
+
+export function seal(session: Session, now = Date.now()) {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv('aes-256-gcm', key, iv);
+  const body = Buffer.concat([cipher.update(JSON.stringify({ ...session, exp: now + sessionMs })), cipher.final(), cipher.getAuthTag()]);
+  return `${iv.toString('base64url')}.${body.toString('base64url')}`;
 }
 
-export function seal(user: User, now = Date.now()) {
-  const value = Buffer.from(JSON.stringify({ ...user, exp: now + sessionHours * 3600_000 })).toString('base64url');
-  return `${value}.${sign(value)}`;
+function open(token: string | undefined, now: number): Session | undefined {
+  const [iv, body] = token?.split('.') ?? [];
+  if (!iv || !body) {
+    return undefined;
+  }
+  const data = Buffer.from(body, 'base64url');
+  try {
+    const decipher = createDecipheriv('aes-256-gcm', key, Buffer.from(iv, 'base64url'));
+    decipher.setAuthTag(data.subarray(-16));
+    const session = JSON.parse(Buffer.concat([decipher.update(data.subarray(0, -16)), decipher.final()]).toString()) as Session & { exp: number };
+    return session.exp > now ? session : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 export function unseal(token: string | undefined, now = Date.now()): User | undefined {
-  const [value, signature] = token?.split('.') ?? [];
-  if (!value || !signature) {
-    return undefined;
+  const session = open(token, now);
+  return session && { login: session.login, owner: session.owner };
+}
+
+export function githubToken(request: IncomingMessage) {
+  return open(cookies(request)[sessionCookie], Date.now())?.github;
+}
+
+async function role(token: string) {
+  const membership = await github<{ state: string; role: string }>(`/user/memberships/orgs/${config.organisation}`, token).catch(
+    () => undefined,
+  );
+  return membership?.state === 'active' ? membership.role === 'admin' : undefined;
+}
+
+const confirmed = new Map<string, number>();
+
+export async function ownsNow(token: string | undefined, now = Date.now()) {
+  if (config.dev) {
+    return config.dev.owner;
   }
-  const expected = Buffer.from(sign(value));
-  const given = Buffer.from(signature);
-  if (expected.length !== given.length || !timingSafeEqual(expected, given)) {
-    return undefined;
+  if (token === undefined) {
+    return false;
   }
-  const session = JSON.parse(Buffer.from(value, 'base64url').toString()) as User & { exp: number };
-  return session.exp > now ? { login: session.login, owner: session.owner } : undefined;
+  if ((confirmed.get(token) ?? 0) > now - 60_000) {
+    return true;
+  }
+  const owner = (await role(token)) === true;
+  if (owner) {
+    confirmed.set(token, now);
+  } else {
+    confirmed.delete(token);
+  }
+  return owner;
 }
 
 export function cookies(request: IncomingMessage) {
@@ -134,15 +174,13 @@ export async function callback(request: IncomingMessage, response: ServerRespons
     return;
   }
   const user = await github<{ login: string }>('/user', token);
-  const membership = await github<{ state: string; role: string }>(`/user/memberships/orgs/${config.organisation}`, token).catch(
-    () => undefined,
-  );
-  if (membership?.state !== 'active') {
+  const owner = await role(token);
+  if (owner === undefined) {
     response.writeHead(403).end(`${user.login} is not a member of ${config.organisation}.`);
     return;
   }
   setCookie(response, stateCookie, '', 0);
-  setCookie(response, sessionCookie, seal({ login: user.login, owner: membership.role === 'admin' }), sessionHours * 3600);
+  setCookie(response, sessionCookie, seal({ login: user.login, owner, github: token }), sessionMs / 1000);
   response.writeHead(302, { Location: '/' }).end();
 }
 
