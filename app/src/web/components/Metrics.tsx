@@ -10,7 +10,7 @@ export function Metrics({ query, cpuMax, memoryMax }: { query: string; cpuMax?: 
     return ranges.includes(saved as Range) ? (saved as Range) : '1d';
   });
   const { data } = usePoll<HistoryData>(`/api/history?${query}&range=${range}`, 60_000);
-  const chart = data && { series: data.series, span: data.span, step: data.step, now: Date.now() };
+  const chart = data && { series: data.series, breakdown: data.breakdown, span: data.span, step: data.step, now: Date.now() };
   return (
     <section className="stat-card space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">

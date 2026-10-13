@@ -14,6 +14,7 @@ export interface ChartProps {
   now: number;
   format: (value: number) => string;
   max?: number;
+  breakdown?: Series[];
 }
 
 function ceiling(value: number) {
@@ -43,7 +44,31 @@ function useWidth() {
   return { ref, width };
 }
 
-export function Chart({ label, series, metric, span, step, now, format, max }: ChartProps) {
+function Breakdown({ lines, at, metric, total, format }: { lines: Series[]; at: number; metric: 'cpu' | 'memory'; total: number; format: (value: number) => string }) {
+  const parts = lines
+    .map((line) => ({ name: line.name, value: line.points.find((point) => point.at === at)?.[metric] ?? 0 }))
+    .filter((part) => part.value > 0)
+    .sort((a, b) => b.value - a.value);
+  const rest = total - parts.reduce((sum, part) => sum + part.value, 0);
+  const rows = rest > 0 ? [...parts, { name: 'system and other', value: rest }] : parts;
+  return (
+    <div className="mt-2 space-y-1 border-t border-line-soft pt-2">
+      {rows.map((row) => (
+        <div className="mono-sm" key={row.name}>
+          <p className="flex gap-3 text-muted">
+            <span className="flex-1">{row.name}</span>
+            <span className="text-ink">{format(row.value)}</span>
+          </p>
+          <div className="h-0.5 rounded bg-line-soft">
+            <div className="h-0.5 rounded bg-muted" style={{ width: `${Math.min(100, (100 * row.value) / Math.max(total, row.value))}%` }} />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export function Chart({ label, series, metric, span, step, now, format, max, breakdown }: ChartProps) {
   const { ref, width } = useWidth();
   const [hover, setHover] = useState<{ at: number; name: string | undefined; x: number }>();
   const start = now - span;
@@ -148,7 +173,7 @@ export function Chart({ label, series, metric, span, step, now, format, max }: C
       )}
       {hover && values.length > 0 && (
         <div
-          className="pointer-events-none absolute top-6 z-10 min-w-44 rounded-lg border border-line bg-paper px-3 py-2 shadow-lg"
+          className="pointer-events-none absolute top-6 z-10 min-w-56 rounded-lg border border-line bg-paper px-3 py-2 shadow-lg"
           style={hover.x > width / 2 ? { right: width - hover.x + 12 } : { left: hover.x + 12 }}
         >
           <p className="mono-sm mb-1 text-muted">{timeLabel(hover.at, span, true)}</p>
@@ -159,6 +184,7 @@ export function Chart({ label, series, metric, span, step, now, format, max }: C
               <span className={name === hover.name ? 'font-semibold' : ''}>{format(point[metric])}</span>
             </p>
           ))}
+          {breakdown && <Breakdown at={hover.at} format={format} lines={breakdown} metric={metric} total={values[0].point[metric]} />}
         </div>
       )}
       {series.length > 1 && (
