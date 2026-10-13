@@ -113,6 +113,23 @@ export interface Disk {
   volumes: Volume[];
 }
 
+export interface Alert {
+  id: number;
+  key: string;
+  title: string;
+  detail: string;
+  since: number;
+  resolved: number | null;
+  issue: number | null;
+}
+
+export interface AlertsData {
+  active: Alert[];
+  recent: Alert[];
+  notifying: boolean;
+  repo: string;
+}
+
 export interface DocPage {
   path: string;
   title: string;

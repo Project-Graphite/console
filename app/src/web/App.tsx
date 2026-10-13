@@ -1,7 +1,9 @@
 import { AppShell, type ShellNavItem, type ShellTab } from '@project-graphite/ui';
 import { useEffect, useState } from 'react';
-import { can, get, Unauthorized, type User } from './api';
+import { can, get, Unauthorized, type AlertsData, type User } from './api';
+import { usePoll } from './usePoll';
 import { Admin } from './pages/Admin';
+import { Alerts } from './pages/Alerts';
 import { ContainerPage } from './pages/ContainerPage';
 import { Docs } from './pages/Docs';
 import { HostShell } from './pages/HostShell';
@@ -38,6 +40,7 @@ function Page({ hash, user }: { hash: string; user: User }) {
   if (docs) return <Docs path={docs[1] ?? ''} />;
   if (hash === '/images') return <Images user={user} />;
   if (hash === '/volumes') return <Volumes />;
+  if (hash === '/alerts') return <Alerts />;
   if (can(user, 'area:shell') && hash === '/shell') return <HostShell />;
   if (user.owner && hash === '/admin') return <Admin />;
   return <Overview />;
@@ -47,6 +50,7 @@ export function App() {
   const hash = useHash();
   const [user, setUser] = useState<User>();
   const [error, setError] = useState<string>();
+  const alerts = usePoll<AlertsData>('/api/alerts', 60_000).data?.active.length ?? 0;
 
   useEffect(() => {
     get<User>('/api/me').then(setUser, (reason: Error) => {
@@ -57,7 +61,8 @@ export function App() {
   }, []);
 
   const pages: ShellTab[] = [
-    { href: '#/', label: 'Overview', icon: 'home', active: !/^\/(images|volumes|shell|admin|docs)/.test(hash) },
+    { href: '#/', label: 'Overview', icon: 'home', active: !/^\/(images|volumes|alerts|shell|admin|docs)/.test(hash) },
+    { href: '#/alerts', label: alerts ? `Alerts · ${alerts}` : 'Alerts', icon: 'bell', active: hash === '/alerts' },
     { href: '#/images', label: 'Images', icon: 'library', active: hash === '/images' },
     { href: '#/volumes', label: 'Volumes', icon: 'folder', active: hash === '/volumes' },
     ...(user && can(user, 'area:shell') ? ([{ href: '#/shell', label: 'Shell', icon: 'monitor', active: hash === '/shell' }] satisfies ShellTab[]) : []),

@@ -10,6 +10,7 @@ One web page for the Project Graphite VPS and its handbook. It runs at
 | Container | a usage chart, details and networks, live logs, a shell, its ports |
 | Images, Volumes | every image and volume on the VPS |
 | Shell | a root shell on the host |
+| Alerts | what needs attention now and what resolved in the last 7 days |
 | Admin | every organisation member, when they last signed in, and what they can change |
 | Docs | the handbook from the `docs` repository, with search |
 
@@ -95,7 +96,22 @@ the Docker socket and a `data` volume for the history. The values set `NODE_ENV`
 | `ACCESS_TEAM` | the Zero Trust team name, the `<team>` in `<team>.cloudflareaccess.com` |
 | `ACCESS_AUD` | the Access application's audience tag |
 
-Optional settings, with their defaults: `GITHUB_ORG` (`Project-Graphite`), `DOCS_REPO`
+## Alerts
+
+Every minute the console checks for a container that stopped, is unhealthy or restarted three times
+in ten minutes (noting an out-of-memory kill), host memory over 90%, swap over 80% and disk over
+85%, and a project's `backup` with no dump in 26 hours. A condition becomes an alert after two
+checks in a row and resolves after two clear ones; finished one-off jobs and sleeping projects are
+not alerts. Active alerts show on the Overview and the Alerts tab, and history is kept in
+`/data/alerts.db` for 30 days.
+
+With `ALERTS_TOKEN` set, each alert also opens an issue labelled `alert` in `ALERTS_REPO`
+(`project-graphite/platform`) and closes it on recovery, so GitHub's notifications deliver it. The
+token is a fine-grained personal access token with Issues read and write on that repository only.
+`platform`'s **Uptime** workflow raises the same kind of issue from outside the VPS.
+
+Optional settings, with their defaults: `ALERTS_TOKEN` (none), `ALERTS_REPO`
+(`project-graphite/platform`), `GITHUB_ORG` (`Project-Graphite`), `DOCS_REPO`
 (`project-graphite/docs`), `SABLIER_URL`
 (`http://sablier:10000`), `DATA_DIR` (`/data`), `DOCKER_SOCKET` (`/var/run/docker.sock`),
 `HOST_ROOT` (`/proc/1/root`).
@@ -104,7 +120,7 @@ Optional settings, with their defaults: `GITHUB_ORG` (`Project-Graphite`), `DOCS
 
 | Route | Who |
 | :--- | :--- |
-| `GET /api/me`, `/api/overview`, `/api/projects/<slug>`, `/api/history?target=<container>\|host&range=` or `?project=<slug>&range=` (`1h`, `5h`, `1d`, `7d`, `30d`; default `1d`), `/api/images`, `/api/disk`, `/api/docs`, `/ws/logs` | every member |
+| `GET /api/me`, `/api/overview`, `/api/projects/<slug>`, `/api/history?target=<container>\|host&range=` or `?project=<slug>&range=` (`1h`, `5h`, `1d`, `7d`, `30d`; default `1d`), `/api/images`, `/api/disk`, `/api/alerts`, `/api/docs`, `/ws/logs` | every member |
 | `POST /api/containers/<id>/start\|stop\|restart`, `POST /api/projects/<slug>/wake`, `/open/<container>/<port>/`, `/ws/terminal` | access to the project |
 | `POST /api/prune` | access to images |
 | `/ws/host` | access to the host shell |
@@ -115,7 +131,7 @@ Optional settings, with their defaults: `GITHUB_ORG` (`Project-Graphite`), `DOCS
 
 | Path | Purpose |
 | :--- | :--- |
-| `app/src/server/` | HTTP and WebSocket server (`main`), Docker client, auth, sampling and disk usage (`inventory`), history, host usage from `/proc`, access (`access`), the handbook (`docs`), `/open` proxy, terminals and logs |
+| `app/src/server/` | HTTP and WebSocket server (`main`), Docker client, auth, sampling and disk usage (`inventory`), history, host usage from `/proc`, access (`access`), alerts (`alerts`, `monitor`), the handbook (`docs`), `/open` proxy, terminals and logs |
 | `app/src/web/` | the React page |
 | `app/test/` | unit tests |
 | `compose.yaml` | local run against your own Docker |
