@@ -48,7 +48,9 @@ export function Docs({ path }: { path: string }) {
   const page = data?.find((candidate) => candidate.path === current);
   const html = useMemo(() => page && data && render(page.markdown, page.path, new Set(data.map((entry) => entry.path))), [page, data]);
 
-  useEffect(() => window.scrollTo(0, 0), [current]);
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [current]);
 
   if (error && !data) {
     return <ErrorState onRetry={() => void reload()} title="The console could not read the handbook">{error.message}</ErrorState>;
