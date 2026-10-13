@@ -2,6 +2,7 @@ import { AppShell, type ShellNavItem, type ShellTab } from '@project-graphite/ui
 import { useEffect, useState } from 'react';
 import { get, Unauthorized, type User } from './api';
 import { ContainerPage } from './pages/ContainerPage';
+import { Docs } from './pages/Docs';
 import { HostShell } from './pages/HostShell';
 import { Images } from './pages/Images';
 import { Overview } from './pages/Overview';
@@ -32,6 +33,8 @@ function Page({ hash, user }: { hash: string; user: User }) {
   if (container) return <ContainerPage id={container[1]} user={user} />;
   const project = /^\/project\/([a-z0-9-]+)$/.exec(hash);
   if (project) return <ProjectPage key={project[1]} slug={project[1]} user={user} />;
+  const docs = /^\/docs(?:\/(.+))?$/.exec(hash);
+  if (docs) return <Docs path={docs[1] ?? ''} />;
   if (user.owner && hash === '/images') return <Images />;
   if (user.owner && hash === '/volumes') return <Volumes />;
   if (user.owner && hash === '/shell') return <HostShell />;
@@ -54,7 +57,7 @@ export function App() {
   }, []);
 
   const pages: ShellTab[] = [
-    { href: '#/', label: 'Overview', icon: 'home', active: !/^\/(images|volumes|shell)/.test(hash) },
+    { href: '#/', label: 'Overview', icon: 'home', active: !/^\/(images|volumes|shell|docs)/.test(hash) },
     ...(user?.owner
       ? ([
           { href: '#/images', label: 'Images', icon: 'library', active: hash === '/images' },
@@ -62,6 +65,7 @@ export function App() {
           { href: '#/shell', label: 'Shell', icon: 'monitor', active: hash === '/shell' },
         ] satisfies ShellTab[])
       : []),
+    { href: '#/docs', label: 'Docs', icon: 'file', active: hash.startsWith('/docs') },
   ];
   const nav: ShellNavItem[] = pages.map(({ href, label, active }) => ({ href, label, active }));
 

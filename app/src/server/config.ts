@@ -21,6 +21,7 @@ export const config = {
   registryUrl:
     process.env.REGISTRY_URL ??
     'https://raw.githubusercontent.com/project-graphite/graphite-hub/main/site/src/data/registry.json',
+  docsRepo: process.env.DOCS_REPO ?? 'project-graphite/docs',
   dockerSocket: process.env.DOCKER_SOCKET ?? '/var/run/docker.sock',
   hostRoot: process.env.HOST_ROOT ?? '/proc/1/root',
   dataDir: process.env.DATA_DIR ?? '/data',

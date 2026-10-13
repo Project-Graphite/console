@@ -24,6 +24,79 @@
     @apply overflow-hidden rounded-xl border border-line bg-black p-2;
   }
 
+  .doc-body {
+    @apply max-w-3xl text-sm leading-relaxed text-ink;
+  }
+
+  .doc-body h1 {
+    @apply mb-4 text-2xl;
+  }
+
+  .doc-body h2 {
+    @apply mt-8 mb-3 border-b border-line-soft pb-1 text-lg;
+  }
+
+  .doc-body h3 {
+    @apply mt-6 mb-2 text-base;
+  }
+
+  .doc-body p,
+  .doc-body ul,
+  .doc-body ol,
+  .doc-body pre,
+  .doc-body table,
+  .doc-body blockquote {
+    @apply mb-4;
+  }
+
+  .doc-body ul {
+    @apply list-disc pl-6;
+  }
+
+  .doc-body ol {
+    @apply list-decimal pl-6;
+  }
+
+  .doc-body li {
+    @apply mb-1;
+  }
+
+  .doc-body a {
+    @apply underline decoration-line underline-offset-2 hover:decoration-ink;
+  }
+
+  .doc-body code {
+    @apply rounded bg-paper px-1 py-0.5 font-mono text-xs;
+  }
+
+  .doc-body pre {
+    @apply overflow-x-auto rounded-xl border border-line bg-black p-3;
+  }
+
+  .doc-body pre code {
+    @apply bg-transparent p-0;
+  }
+
+  .doc-body table {
+    @apply block w-full overflow-x-auto text-left;
+  }
+
+  .doc-body th {
+    @apply border-b border-line px-3 py-2 font-normal text-muted;
+  }
+
+  .doc-body td {
+    @apply border-b border-line-soft px-3 py-2 align-top;
+  }
+
+  .doc-body blockquote {
+    @apply border-l-2 border-line pl-4 text-muted;
+  }
+
+  .doc-body hr {
+    @apply my-6 border-line;
+  }
+
   .log-frame {
     @apply max-h-[28rem] overflow-auto rounded-xl border border-line bg-black p-3 font-mono text-xs leading-relaxed whitespace-pre-wrap text-ink;
   }

@@ -101,6 +101,12 @@ export interface Disk {
   volumes: Volume[];
 }
 
+export interface DocPage {
+  path: string;
+  title: string;
+  markdown: string;
+}
+
 export class Unauthorized extends Error {}
 
 async function request<T>(method: string, path: string) {

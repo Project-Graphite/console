@@ -4,6 +4,7 @@ import { WebSocketServer } from 'ws';
 import { authenticate, callback, login, logout, type User } from './auth.ts';
 import { config } from './config.ts';
 import { docker } from './docker.ts';
+import { docs } from './docs.ts';
 import { History, ranges, type Range } from './history.ts';
 import { collect, containers, diskUsage, projects, refresh, snapshot, type ContainerView } from './inventory.ts';
 import { open, openSocket, parseOpen } from './proxy.ts';
@@ -89,6 +90,9 @@ async function api(user: User, method: string, url: URL) {
   const route = `${method} ${url.pathname}`;
   if (route === 'GET /api/me') {
     return { ...user, ssh: user.owner ? config.sshTarget : null };
+  }
+  if (route === 'GET /api/docs') {
+    return docs();
   }
   if (route === 'GET /api/overview') {
     const [{ host }, usage, list] = await Promise.all([snapshot(), diskUsage(), visibleProjects(user)]);
