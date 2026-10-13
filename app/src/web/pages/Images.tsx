@@ -1,9 +1,9 @@
 import { ConfirmDialog, ErrorState, PageHeader, timeAgo } from '@project-graphite/ui';
 import { useState } from 'react';
-import { bytes, post, type Disk, type Image } from '../api';
+import { bytes, can, type Disk, type Image, post, type User } from '../api';
 import { usePoll } from '../usePoll';
 
-export function Images() {
+export function Images({ user }: { user: User }) {
   const images = usePoll<Image[]>('/api/images', 30_000);
   const disk = usePoll<Disk>('/api/disk', 30_000);
   const [pruning, setPruning] = useState(false);
@@ -18,9 +18,11 @@ export function Images() {
     <div className="space-y-6">
       <PageHeader
         actions={
-          <button className="secondary-button" onClick={() => setPruning(true)} type="button">
-            Remove dangling images
-          </button>
+          can(user, 'area:images') && (
+            <button className="secondary-button" onClick={() => setPruning(true)} type="button">
+              Remove dangling images
+            </button>
+          )
         }
         title="Images"
       >

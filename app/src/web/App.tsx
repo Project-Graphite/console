@@ -1,6 +1,7 @@
 import { AppShell, type ShellNavItem, type ShellTab } from '@project-graphite/ui';
 import { useEffect, useState } from 'react';
-import { get, Unauthorized, type User } from './api';
+import { can, get, Unauthorized, type User } from './api';
+import { Admin } from './pages/Admin';
 import { ContainerPage } from './pages/ContainerPage';
 import { Docs } from './pages/Docs';
 import { HostShell } from './pages/HostShell';
@@ -35,9 +36,10 @@ function Page({ hash, user }: { hash: string; user: User }) {
   if (project) return <ProjectPage key={project[1]} slug={project[1]} user={user} />;
   const docs = /^\/docs(?:\/(.+))?$/.exec(hash);
   if (docs) return <Docs path={docs[1] ?? ''} />;
-  if (user.owner && hash === '/images') return <Images />;
-  if (user.owner && hash === '/volumes') return <Volumes />;
-  if (user.owner && hash === '/shell') return <HostShell />;
+  if (hash === '/images') return <Images user={user} />;
+  if (hash === '/volumes') return <Volumes />;
+  if (can(user, 'area:shell') && hash === '/shell') return <HostShell />;
+  if (user.owner && hash === '/admin') return <Admin />;
   return <Overview />;
 }
 
@@ -55,14 +57,11 @@ export function App() {
   }, []);
 
   const pages: ShellTab[] = [
-    { href: '#/', label: 'Overview', icon: 'home', active: !/^\/(images|volumes|shell|docs)/.test(hash) },
-    ...(user?.owner
-      ? ([
-          { href: '#/images', label: 'Images', icon: 'library', active: hash === '/images' },
-          { href: '#/volumes', label: 'Volumes', icon: 'folder', active: hash === '/volumes' },
-          { href: '#/shell', label: 'Shell', icon: 'monitor', active: hash === '/shell' },
-        ] satisfies ShellTab[])
-      : []),
+    { href: '#/', label: 'Overview', icon: 'home', active: !/^\/(images|volumes|shell|admin|docs)/.test(hash) },
+    { href: '#/images', label: 'Images', icon: 'library', active: hash === '/images' },
+    { href: '#/volumes', label: 'Volumes', icon: 'folder', active: hash === '/volumes' },
+    ...(user && can(user, 'area:shell') ? ([{ href: '#/shell', label: 'Shell', icon: 'monitor', active: hash === '/shell' }] satisfies ShellTab[]) : []),
+    ...(user?.owner ? ([{ href: '#/admin', label: 'Admin', icon: 'key', active: hash === '/admin' }] satisfies ShellTab[]) : []),
     { href: '#/docs', label: 'Docs', icon: 'file', active: hash.startsWith('/docs') },
   ];
   const nav: ShellNavItem[] = pages.map(({ href, label, active }) => ({ href, label, active }));
@@ -73,7 +72,7 @@ export function App() {
         user && (
           <span className="flex items-center gap-3">
             <span className="mono-sm text-muted">
-              {user.login} · {user.owner ? 'owner' : 'contributor'}
+              {user.login} · {user.owner ? 'owner' : 'member'}
             </span>
             <a className="mono-sm rule-link" href="/auth/logout">
               sign out

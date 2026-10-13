@@ -10,15 +10,24 @@ One web page for the Project Graphite VPS and its handbook. It runs at
 | Container | a usage chart, details and networks, live logs, a shell, its ports |
 | Images, Volumes | every image and volume on the VPS |
 | Shell | a root shell on the host |
+| Admin | every organisation member, when they last signed in, and what they can change |
 | Docs | the handbook from the `docs` repository, with search |
 
 Usage charts cover 1h, 5h, 1d, 7d or 30d. Hovering shows the time and every line's value, with the
 nearest line highlighted. The chosen range and the pins are kept in the browser.
 
-| Who | Sees | Can |
-| :--- | :--- | :--- |
-| Organisation owners | everything | start, stop, restart, wake, prune dangling images, container shells, the host shell, open a container's web port |
-| Other organisation members | the projects they own or author in the registry: their pages, containers, usage, logs, images and volumes; the Docs | read only |
+Every organisation member can read everything except Admin. What they can change is set per
+member on the Admin page:
+
+| Access | Lets them |
+| :--- | :--- |
+| a project | start, stop and restart its containers, wake it, open its containers' terminals and ports |
+| images | remove dangling images |
+| host shell | open the root shell on the host |
+| everything | all of the above, for every project |
+
+Organisation owners have everything, and only they see Admin. Access is kept in the console's
+`/data/access.db`.
 
 ## Stack
 
@@ -34,13 +43,14 @@ Sign-in is two layers:
 
 1. **Cloudflare Access** admits only Project-Graphite members. The server verifies the
    `Cf-Access-Jwt-Assertion` header itself.
-2. **GitHub sign-in** names the user. An organisation admin is an owner, and anyone else sees only
-   their registry projects.
+2. **GitHub sign-in** names the user. An organisation admin is an owner, and anyone else is a
+   member.
 
-Sessions last 1 hour, after which the page signs in again through GitHub without a prompt. Owner
-actions (start, stop, restart, wake, prune, a terminal, the host shell, an open port) ask GitHub for
-the user's role before they run, at most once a minute. When that answer is no longer owner, the
-action is refused and the user's open terminals close; open terminals are also rechecked every
+Sessions last 1 hour, after which the page signs in again through GitHub without a prompt. Every
+change (start, stop, restart, wake, prune, a terminal, the host shell, an open port, saving access)
+asks GitHub for the user's role, at most once a minute, and reads their access before it runs. When
+they may no longer do it, the change is refused and their open terminals for it close. Removing
+access on the Admin page closes those terminals at once, and open terminals are rechecked every
 hour. The session cookie is encrypted and holds the user's GitHub token for these checks.
 
 ## Running it
@@ -50,7 +60,7 @@ docker compose up --build
 ```
 
 Then open http://localhost:3000. Locally there is no Access or GitHub sign-in: `DEV_LOGIN` names
-the user and `DEV_ROLE=contributor` shows the contributor view. The local stack talks to your own
+the user and `DEV_ROLE=member` shows a member's view. The local stack talks to your own
 Docker, so its shells and actions act on your machine.
 
 For the page with hot reload, keep that container running and serve the page from your machine:
@@ -85,8 +95,8 @@ the Docker socket and a `data` volume for the history. The values set `NODE_ENV`
 | `ACCESS_TEAM` | the Zero Trust team name, the `<team>` in `<team>.cloudflareaccess.com` |
 | `ACCESS_AUD` | the Access application's audience tag |
 
-Optional settings, with their defaults: `GITHUB_ORG` (`Project-Graphite`), `REGISTRY_URL` (the
-Hub's `registry.json`), `DOCS_REPO` (`project-graphite/docs`), `SABLIER_URL`
+Optional settings, with their defaults: `GITHUB_ORG` (`Project-Graphite`), `DOCS_REPO`
+(`project-graphite/docs`), `SABLIER_URL`
 (`http://sablier:10000`), `DATA_DIR` (`/data`), `DOCKER_SOCKET` (`/var/run/docker.sock`),
 `HOST_ROOT` (`/proc/1/root`).
 
@@ -94,19 +104,18 @@ Hub's `registry.json`), `DOCS_REPO` (`project-graphite/docs`), `SABLIER_URL`
 
 | Route | Who |
 | :--- | :--- |
-| `GET /api/me`, `/api/overview`, `/api/projects/<slug>`, `/api/docs` | everyone signed in, scoped to their projects |
-| `GET /api/history?target=<container>\|host&range=` or `?project=<slug>&range=` (`1h`, `5h`, `1d`, `7d`, `30d`; default `1d`) | everyone; `host` for owners |
-| `GET /api/images`, `GET /api/disk`, `POST /api/prune` | owners |
-| `POST /api/containers/<id>/start\|stop\|restart`, `POST /api/projects/<slug>/wake` | owners |
-| `/open/<container>/<port>/`, `/ws/terminal`, `/ws/host` | owners |
-| `/ws/logs` | everyone, for their containers |
+| `GET /api/me`, `/api/overview`, `/api/projects/<slug>`, `/api/history?target=<container>\|host&range=` or `?project=<slug>&range=` (`1h`, `5h`, `1d`, `7d`, `30d`; default `1d`), `/api/images`, `/api/disk`, `/api/docs`, `/ws/logs` | every member |
+| `POST /api/containers/<id>/start\|stop\|restart`, `POST /api/projects/<slug>/wake`, `/open/<container>/<port>/`, `/ws/terminal` | access to the project |
+| `POST /api/prune` | access to images |
+| `/ws/host` | access to the host shell |
+| `GET /api/admin/members`, `POST /api/admin/members/<login>` with `{"scopes": ["project:<slug>", "area:images", "area:shell", "*"]}` | owners |
 | `/healthz` | anyone |
 
 ## Layout
 
 | Path | Purpose |
 | :--- | :--- |
-| `app/src/server/` | HTTP and WebSocket server (`main`), Docker client, auth, sampling and disk usage (`inventory`), history, host usage from `/proc`, the registry, the handbook (`docs`), `/open` proxy, terminals and logs |
+| `app/src/server/` | HTTP and WebSocket server (`main`), Docker client, auth, sampling and disk usage (`inventory`), history, host usage from `/proc`, access (`access`), the handbook (`docs`), `/open` proxy, terminals and logs |
 | `app/src/web/` | the React page |
 | `app/test/` | unit tests |
 | `compose.yaml` | local run against your own Docker |

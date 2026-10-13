@@ -1,6 +1,6 @@
 import { ConfirmDialog, ErrorState, PageHeader, TagChip, timeAgo } from '@project-graphite/ui';
 import { useState } from 'react';
-import { post, type Container, type Overview, type User } from '../api';
+import { can, post, type Container, type Overview, type User } from '../api';
 import { Logs } from '../components/Logs';
 import { LazyTerminal } from '../components/LazyTerminal';
 import { Metrics } from '../components/Metrics';
@@ -89,11 +89,12 @@ export function ContainerPage({ id, user }: { id: string; user: User }) {
   if (!container || !project) {
     return <ErrorState title="No such container">It may have been removed or recreated by a deploy.</ErrorState>;
   }
+  const writable = can(user, `project:${project.slug}`);
 
   return (
     <div className="space-y-6">
       <PageHeader
-        actions={user.owner && <Actions container={container} project={project.slug} sleeps={project.sleeps} />}
+        actions={writable && <Actions container={container} project={project.slug} sleeps={project.sleeps} />}
         eyebrow={<a className="rule-link" href={`#/project/${project.slug}`}>{project.slug}</a>}
         title={container.service}
       >
@@ -122,14 +123,14 @@ export function ContainerPage({ id, user }: { id: string; user: User }) {
         </dl>
       </section>
 
-      {user.owner && <Ports container={container} ssh={user.ssh} />}
+      {writable && <Ports container={container} ssh={user.ssh} />}
 
       <section className="space-y-2">
         <h2 className="mono-sm text-muted">Logs</h2>
         <Logs container={container.id} />
       </section>
 
-      {user.owner && container.state === 'running' && (
+      {writable && container.state === 'running' && (
         <section className="space-y-2">
           <div className="flex items-center gap-3">
             <h2 className="mono-sm text-muted">Shell</h2>

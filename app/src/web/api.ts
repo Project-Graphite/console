@@ -1,7 +1,19 @@
 export interface User {
   login: string;
   owner: boolean;
+  grants: string[];
   ssh: string | null;
+}
+
+export function can(user: User, scope: string) {
+  return user.grants.includes('*') || user.grants.includes(scope);
+}
+
+export interface Member {
+  login: string;
+  owner: boolean;
+  scopes: string[];
+  seen: number | null;
 }
 
 export interface Container {
@@ -109,8 +121,12 @@ export interface DocPage {
 
 export class Unauthorized extends Error {}
 
-async function request<T>(method: string, path: string) {
-  const response = await fetch(path, { method, headers: { Accept: 'application/json' } });
+async function request<T>(method: string, path: string, body?: unknown) {
+  const response = await fetch(path, {
+    method,
+    headers: body === undefined ? { Accept: 'application/json' } : { Accept: 'application/json', 'Content-Type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
   if (response.status === 401) {
     location.assign('/auth/login');
     throw new Unauthorized();
@@ -122,7 +138,7 @@ async function request<T>(method: string, path: string) {
 }
 
 export const get = <T>(path: string) => request<T>('GET', path);
-export const post = <T>(path: string) => request<T>('POST', path);
+export const post = <T>(path: string, body?: unknown) => request<T>('POST', path, body);
 
 export function bytes(value: number | null | undefined) {
   if (value === null || value === undefined) {

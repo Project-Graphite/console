@@ -1,14 +1,14 @@
 import { readFile } from 'node:fs/promises';
 import http from 'node:http';
 import { WebSocketServer } from 'ws';
-import { authenticate, callback, githubToken, login, logout, ownsNow, sessionMs, type User } from './auth.ts';
+import { Access, permits, scopePattern } from './access.ts';
+import { authenticate, callback, githubToken, login, logout, organisationMembers, roleNow, sessionMs, type Role, type User } from './auth.ts';
 import { config } from './config.ts';
 import { docker } from './docker.ts';
 import { docs } from './docs.ts';
 import { History, ranges, type Range } from './history.ts';
-import { collect, containers, diskUsage, projects, refresh, snapshot, type ContainerView } from './inventory.ts';
+import { collect, containers, diskUsage, projects, refresh, snapshot } from './inventory.ts';
 import { open, openSocket, parseOpen } from './proxy.ts';
-import { projectsOf } from './registry.ts';
 import { logs, terminal } from './terminal.ts';
 
 class Refusal extends Error {
@@ -21,6 +21,7 @@ class Refusal extends Error {
 }
 
 const history = new History(config.dataDir);
+const access = new Access(config.dataDir);
 collect(history);
 
 const types: Record<string, string> = {
@@ -39,68 +40,68 @@ const policy = [
   "base-uri 'none'",
 ].join('; ');
 
-function requireOwner(user: User) {
-  if (!user.owner) {
+const held = new Map<string, Set<{ scope: string; owner: boolean; close: () => void }>>();
+
+function allows(role: Role | undefined, login: string, scope: string) {
+  return role === 'owner' || (role === 'member' && permits(access.scopes(login), scope));
+}
+
+function closeRevoked(login: string, role?: Role) {
+  for (const entry of held.get(login.toLowerCase()) ?? []) {
+    if (!allows(role ?? (entry.owner ? 'owner' : 'member'), login, entry.scope)) {
+      entry.close();
+    }
+  }
+}
+
+async function requireNow(request: http.IncomingMessage, user: User, scope: string) {
+  const role = await roleNow(githubToken(request));
+  if (!allows(role, user.login, scope)) {
+    closeRevoked(user.login, role);
+    throw new Refusal(403, role ? `You do not have write access to ${scope.replace(/^\w+:/, '')}.` : 'You are no longer an organisation member. Sign in again.');
+  }
+  return role!;
+}
+
+async function requireOwnerNow(request: http.IncomingMessage) {
+  if ((await roleNow(githubToken(request))) !== 'owner') {
     throw new Refusal(403, 'Only organisation owners can do that.');
   }
 }
 
-const ownerSockets = new Map<string, Set<() => void>>();
-
-async function requireCurrentOwner(request: http.IncomingMessage, user: User) {
-  requireOwner(user);
-  if (!(await ownsNow(githubToken(request)))) {
-    for (const close of ownerSockets.get(user.login) ?? []) {
-      close();
-    }
-    throw new Refusal(403, 'You are no longer an organisation owner. Sign in again.');
-  }
-}
-
-function closeWhenNotOwner(request: http.IncomingMessage, user: User, connection: { on(event: 'close', listener: () => void): unknown }, close: () => void) {
+function hold(request: http.IncomingMessage, user: User, scope: string, role: Role, connection: { on(event: 'close', listener: () => void): unknown }, close: () => void) {
   const token = githubToken(request);
-  const held = ownerSockets.get(user.login) ?? new Set();
-  ownerSockets.set(user.login, held.add(close));
+  const entry = { scope, owner: role === 'owner', close };
+  const entries = held.get(user.login.toLowerCase()) ?? new Set();
+  held.set(user.login.toLowerCase(), entries.add(entry));
   const timer = setInterval(() => {
-    void ownsNow(token).then((owner) => {
-      if (!owner) {
+    void roleNow(token).then((current) => {
+      entry.owner = current === 'owner';
+      if (!allows(current, user.login, scope)) {
         close();
       }
     });
   }, sessionMs);
   connection.on('close', () => {
     clearInterval(timer);
-    held.delete(close);
+    entries.delete(entry);
   });
 }
 
-async function scope(user: User) {
-  return user.owner ? undefined : await projectsOf(user.login);
-}
-
-function allowed(visible: Set<string> | undefined, container: ContainerView) {
-  return !visible || visible.has(container.project);
-}
-
-async function findContainer(user: User, id: string) {
-  const visible = await scope(user);
+async function findContainer(id: string) {
   const container = (await containers()).find((candidate) => candidate.id.startsWith(id));
-  if (!container || !allowed(visible, container)) {
+  if (!container) {
     throw new Refusal(404, 'No such container.');
   }
   return container;
 }
 
-async function visibleProjects(user: User) {
-  const visible = await scope(user);
-  const views = (await containers())
-    .filter((container) => allowed(visible, container))
-    .map((container) => (user.owner ? container : { ...container, networks: {} }));
-  return projects(views, await diskUsage());
+async function allProjects() {
+  return projects(await containers(), await diskUsage());
 }
 
-async function findProject(user: User, slug: string) {
-  const project = (await visibleProjects(user)).find((candidate) => candidate.slug === slug);
+async function findProject(slug: string) {
+  const project = (await allProjects()).find((candidate) => candidate.slug === slug);
   if (!project) {
     throw new Refusal(404, 'No such project.');
   }
@@ -115,32 +116,51 @@ function rangeOf(url: URL) {
   return range as Range;
 }
 
-async function api(user: User, method: string, url: URL) {
-  const route = `${method} ${url.pathname}`;
+async function body(request: http.IncomingMessage) {
+  let text = '';
+  for await (const chunk of request) {
+    text += chunk;
+    if (text.length > 65_536) {
+      throw new Refusal(413, 'The request is too large.');
+    }
+  }
+  return JSON.parse(text || '{}') as unknown;
+}
+
+async function members(request: http.IncomingMessage, user: User) {
+  const token = githubToken(request);
+  const organisation = token ? await organisationMembers(token) : [{ login: user.login, owner: user.owner }];
+  const stored = new Map(access.all().map((row) => [row.login, row]));
+  return organisation
+    .map((member) => ({ ...member, scopes: stored.get(member.login.toLowerCase())?.scopes ?? [], seen: stored.get(member.login.toLowerCase())?.seen ?? null }))
+    .sort((a, b) => Number(b.owner) - Number(a.owner) || a.login.localeCompare(b.login));
+}
+
+async function api(user: User, request: http.IncomingMessage, url: URL) {
+  const route = `${request.method} ${url.pathname}`;
   if (route === 'GET /api/me') {
-    return { ...user, ssh: user.owner ? config.sshTarget : null };
+    access.seen(user.login);
+    return { ...user, grants: user.owner ? ['*'] : access.scopes(user.login), ssh: user.owner ? config.sshTarget : null };
   }
   if (route === 'GET /api/docs') {
     return docs();
   }
   if (route === 'GET /api/overview') {
-    const [{ host }, usage, list] = await Promise.all([snapshot(), diskUsage(), visibleProjects(user)]);
+    const [{ host }, usage, list] = await Promise.all([snapshot(), diskUsage(), allProjects()]);
     return {
-      host: user.owner ? host : null,
-      docker: user.owner
-        ? {
-            images: usage.images,
-            containers: usage.containers,
-            buildCache: usage.buildCache,
-            volumes: usage.volumes.reduce((sum, volume) => sum + Math.max(0, volume.size), 0),
-          }
-        : null,
+      host,
+      docker: {
+        images: usage.images,
+        containers: usage.containers,
+        buildCache: usage.buildCache,
+        volumes: usage.volumes.reduce((sum, volume) => sum + Math.max(0, volume.size), 0),
+      },
       projects: list,
     };
   }
   const project = /^GET \/api\/projects\/([a-z0-9-]+)$/.exec(route);
   if (project) {
-    const [found, usage] = await Promise.all([findProject(user, project[1]), diskUsage()]);
+    const [found, usage] = await Promise.all([findProject(project[1]), diskUsage()]);
     const images = new Map<string, { id: string; name: string; size: number | null; usedBy: string[] }>();
     for (const container of found.containers) {
       const image = images.get(container.imageId) ?? { id: container.imageId, name: container.image, size: usage.imageSizes[container.imageId] ?? null, usedBy: [] };
@@ -153,23 +173,15 @@ async function api(user: User, method: string, url: URL) {
     const range = rangeOf(url);
     const slug = url.searchParams.get('project');
     if (slug) {
-      const found = await findProject(user, slug);
+      const found = await findProject(slug);
       return { ...ranges[range], series: found.containers.map((container) => ({ name: container.service, points: history.series(container.name, range) })) };
     }
     const target = url.searchParams.get('target') ?? '';
-    if (target === 'host') {
-      requireOwner(user);
-    } else {
-      const visible = await scope(user);
-      const container = (await containers()).find((candidate) => candidate.name === target);
-      if (!container || !allowed(visible, container)) {
-        throw new Refusal(404, 'No such container.');
-      }
+    if (target !== 'host' && !(await containers()).some((candidate) => candidate.name === target)) {
+      throw new Refusal(404, 'No such container.');
     }
     return { ...ranges[range], series: [{ name: target, points: history.series(target, range) }] };
   }
-
-  requireOwner(user);
   if (route === 'GET /api/images') {
     const [images, all] = await Promise.all([
       docker<{ Id: string; RepoTags: string[] | null; Size: number; Created: number }[]>('GET', '/images/json'),
@@ -186,19 +198,39 @@ async function api(user: User, method: string, url: URL) {
   if (route === 'GET /api/disk') {
     return diskUsage();
   }
+  if (route === 'GET /api/admin/members') {
+    if (!user.owner) {
+      throw new Refusal(403, 'Only organisation owners can do that.');
+    }
+    return members(request, user);
+  }
+  const grant = /^POST \/api\/admin\/members\/([A-Za-z0-9-]+)$/.exec(route);
+  if (grant) {
+    await requireOwnerNow(request);
+    const { scopes } = (await body(request)) as { scopes?: unknown };
+    if (!Array.isArray(scopes) || !scopes.every((scope) => typeof scope === 'string' && scopePattern.test(scope))) {
+      throw new Refusal(400, 'Access is a list of *, area:images, area:shell or project:<slug>.');
+    }
+    access.grant(grant[1], scopes);
+    closeRevoked(grant[1]);
+    return { ok: true, scopes: access.scopes(grant[1]) };
+  }
   if (route === 'POST /api/prune') {
+    await requireNow(request, user, 'area:images');
     const result = await docker<{ SpaceReclaimed: number }>('POST', `/images/prune?filters=${encodeURIComponent('{"dangling":["true"]}')}`);
     return { reclaimed: result.SpaceReclaimed };
   }
   const action = /^POST \/api\/containers\/([0-9a-f]{12,64})\/(start|stop|restart)$/.exec(route);
   if (action) {
-    const container = await findContainer(user, action[1]);
+    const container = await findContainer(action[1]);
+    await requireNow(request, user, `project:${container.project}`);
     await docker('POST', `/containers/${container.id}/${action[2]}`);
     await refresh();
     return { ok: true };
   }
   const wake = /^POST \/api\/projects\/([a-z0-9-]+)\/wake$/.exec(route);
   if (wake) {
+    await requireNow(request, user, `project:${wake[1]}`);
     const response = await fetch(`${config.sablierUrl}/api/strategies/blocking?group=${wake[1]}&session_duration=30m&timeout=2m`, {
       signal: AbortSignal.timeout(130_000),
     });
@@ -214,7 +246,7 @@ async function api(user: User, method: string, url: URL) {
 async function serveFile(response: http.ServerResponse, pathname: string) {
   const name = pathname === '/' || !/\.[a-z0-9]+$/.test(pathname) ? 'index.html' : pathname.slice(1);
   try {
-    const body = await readFile(new URL(name, config.webRoot));
+    const file = await readFile(new URL(name, config.webRoot));
     const extension = name.slice(name.lastIndexOf('.'));
     response.writeHead(200, {
       'Content-Type': types[extension] ?? 'application/octet-stream',
@@ -223,7 +255,7 @@ async function serveFile(response: http.ServerResponse, pathname: string) {
       'X-Content-Type-Options': 'nosniff',
       'Referrer-Policy': 'same-origin',
     });
-    response.end(body);
+    response.end(file);
   } catch {
     response.writeHead(404).end('Not found.');
   }
@@ -253,19 +285,16 @@ async function handle(request: http.IncomingMessage, response: http.ServerRespon
 
   const target = parseOpen(url.pathname);
   if (target) {
-    await requireCurrentOwner(request, user);
-    await findContainer(user, target.container);
+    const container = await findContainer(target.container);
+    await requireNow(request, user, `project:${container.project}`);
     return open(request, response, target, url.search);
   }
   if (url.pathname.startsWith('/api/')) {
     if (request.method === 'POST' && request.headers.origin && request.headers.origin !== new URL(config.appUrl).origin) {
       throw new Refusal(403, 'Cross-origin requests are refused.');
     }
-    if (request.method === 'POST') {
-      await requireCurrentOwner(request, user);
-    }
-    const body = await api(user, request.method ?? 'GET', url);
-    response.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify(body));
+    const result = await api(user, request, url);
+    response.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify(result));
     return;
   }
   await serveFile(response, url.pathname);
@@ -273,7 +302,7 @@ async function handle(request: http.IncomingMessage, response: http.ServerRespon
 
 const server = http.createServer((request, response) => {
   handle(request, response).catch((error: unknown) => {
-    const status = error instanceof Refusal ? error.status : 500;
+    const status = error instanceof Refusal ? error.status : error instanceof SyntaxError ? 400 : 500;
     if (status === 500) {
       console.error(error);
     }
@@ -296,20 +325,17 @@ server.on('upgrade', (request, socket, head) => {
     }
     const target = parseOpen(url.pathname);
     if (target) {
-      await requireCurrentOwner(request, user);
-      await findContainer(user, target.container);
-      closeWhenNotOwner(request, user, socket, () => socket.destroy());
+      const container = await findContainer(target.container);
+      const scope = `project:${container.project}`;
+      hold(request, user, scope, await requireNow(request, user, scope), socket, () => socket.destroy());
       return openSocket(request, socket, head, target, url.search);
     }
-    const container = url.searchParams.get('container') ?? '';
-    const ownerOnly = url.pathname === '/ws/terminal' || url.pathname === '/ws/host';
-    if (ownerOnly) {
-      await requireCurrentOwner(request, user);
-    }
-    const found = url.pathname === '/ws/host' ? undefined : await findContainer(user, container);
+    const found = url.pathname === '/ws/host' ? undefined : await findContainer(url.searchParams.get('container') ?? '');
+    const scope = url.pathname === '/ws/host' ? 'area:shell' : url.pathname === '/ws/terminal' ? `project:${found!.project}` : undefined;
+    const role = scope ? await requireNow(request, user, scope) : undefined;
     sockets.handleUpgrade(request, socket, head, (client) => {
-      if (ownerOnly) {
-        closeWhenNotOwner(request, user, client, () => client.terminate());
+      if (scope && role) {
+        hold(request, user, scope, role, client, () => client.terminate());
       }
       const run =
         url.pathname === '/ws/logs'
