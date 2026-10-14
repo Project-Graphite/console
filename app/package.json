@@ -14,7 +14,7 @@
     "@project-graphite/ui": "https://github.com/project-graphite/graphite-ui/releases/download/v0.4.3/project-graphite-ui-0.4.3.tgz",
     "@xterm/addon-fit": "0.11.0",
     "@xterm/xterm": "6.0.0",
-    "marked": "18.0.14",
+    "marked": "18.1.0",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "ws": "8.22.0"
