@@ -1,3 +1,5 @@
+import { useState } from 'react';
+
 export function load<T>(key: string, fallback: T): T {
   try {
     const saved = localStorage.getItem(key);
@@ -13,4 +15,13 @@ export function save(key: string, value: unknown) {
   } catch {
     return;
   }
+}
+
+export function usePreference<T>(key: string, fallback: T) {
+  const [value, setValue] = useState(() => load(key, fallback));
+  const update = (next: T) => {
+    setValue(next);
+    save(key, next);
+  };
+  return [value, update] as const;
 }

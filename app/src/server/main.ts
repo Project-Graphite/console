@@ -11,7 +11,7 @@ import { History, projectTotals, ranges, type Range } from './history.ts';
 import { collect, containers, diskUsage, projects, refresh, snapshot } from './inventory.ts';
 import { monitor } from './monitor.ts';
 import { open, openSocket, parseOpen } from './proxy.ts';
-import { logs, terminal } from './terminal.ts';
+import { downloadLogs, logs, terminal } from './terminal.ts';
 
 class Refusal extends Error {
   constructor(
@@ -300,6 +300,10 @@ async function handle(request: http.IncomingMessage, response: http.ServerRespon
     const container = await findContainer(target.container);
     await requireNow(request, user, `project:${container.project}`);
     return open(request, response, target, url.search);
+  }
+  const download = /^\/api\/containers\/([0-9a-f]{12,64})\/logs$/.exec(url.pathname);
+  if (download && request.method === 'GET') {
+    return downloadLogs(response, await findContainer(download[1]));
   }
   if (url.pathname.startsWith('/api/')) {
     if (request.method === 'POST' && request.headers.origin && request.headers.origin !== new URL(config.appUrl).origin) {

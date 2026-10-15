@@ -1,6 +1,7 @@
 import { ErrorState, PageHeader, TagChip } from '@project-graphite/ui';
 import { useState } from 'react';
 import { bytes, can, percent, post, shortImage, stateColor, stateOf, type ProjectDetail, type User } from '../api';
+import { Logs } from '../components/Logs';
 import { Metrics } from '../components/Metrics';
 import { usePoll } from '../usePoll';
 
@@ -87,6 +88,20 @@ export function ProjectPage({ slug, user }: { slug: string; user: User }) {
             </tbody>
           </table>
         </div>
+      </section>
+
+      <section className="space-y-2">
+        <h2 className="mono-sm text-muted">Logs</h2>
+        {project.containers.map((container) => (
+          <Logs
+            collapsible
+            container={container.id}
+            key={container.id}
+            name={container.name}
+            open={project.containers.length === 1}
+            running={container.state === 'running'}
+          />
+        ))}
       </section>
 
       <section className="grid gap-3 lg:grid-cols-2">

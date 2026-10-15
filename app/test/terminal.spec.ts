@@ -2,17 +2,26 @@ import { describe, expect, it } from 'vitest';
 import { logQuery, resumeAfter } from '../src/server/terminal.ts';
 
 describe('log stream', () => {
-  it('loads the chosen amount of history', () => {
-    expect(logQuery(new URLSearchParams('tail=1000'))).toBe('tail=1000');
+  it('follows the chosen number of lines', () => {
+    expect(logQuery(new URLSearchParams('tail=1234'))).toBe('follow=1&tail=1234');
   });
 
-  it('loads 300 lines when the amount is missing or not offered', () => {
-    expect(logQuery(new URLSearchParams())).toBe('tail=300');
-    expect(logQuery(new URLSearchParams('tail=99999'))).toBe('tail=300');
+  it('loads 100 lines when the number is missing or not a positive number', () => {
+    expect(logQuery(new URLSearchParams())).toBe('follow=1&tail=100');
+    expect(logQuery(new URLSearchParams('tail=0'))).toBe('follow=1&tail=100');
+    expect(logQuery(new URLSearchParams('tail=lots'))).toBe('follow=1&tail=100');
+  });
+
+  it('caps the history at 5000 lines', () => {
+    expect(logQuery(new URLSearchParams('tail=99999'))).toBe('follow=1&tail=5000');
+  });
+
+  it('reads a snapshot without following when streaming is off', () => {
+    expect(logQuery(new URLSearchParams('tail=200&follow=0'))).toBe('follow=0&tail=200');
   });
 
   it('resumes everything after the last line it delivered', () => {
-    expect(logQuery(new URLSearchParams('after=2026-10-15T10:00:00.123456789Z'))).toBe('tail=all&since=1792058400.123456790');
+    expect(logQuery(new URLSearchParams('after=2026-10-15T10:00:00.123456789Z'))).toBe('follow=1&tail=all&since=1792058400.123456790');
   });
 
   it('resumes one nanosecond after timestamps of any precision', () => {
