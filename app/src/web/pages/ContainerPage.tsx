@@ -127,7 +127,7 @@ export function ContainerPage({ id, user }: { id: string; user: User }) {
 
       <section className="space-y-2">
         <h2 className="mono-sm text-muted">Logs</h2>
-        <Logs container={container.id} />
+        <Logs container={container.id} name={container.name} running={container.state === 'running'} />
       </section>
 
       {writable && container.state === 'running' && (

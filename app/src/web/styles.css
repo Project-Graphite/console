@@ -98,6 +98,6 @@
   }
 
   .log-frame {
-    @apply max-h-[28rem] overflow-auto rounded-xl border border-line bg-black p-3 font-mono text-xs leading-relaxed whitespace-pre-wrap text-ink;
+    @apply max-h-[28rem] overflow-auto rounded-xl border border-line bg-black p-3 font-mono text-xs leading-relaxed text-ink;
   }
 }

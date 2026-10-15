@@ -81,15 +81,38 @@ export class Demuxer {
 
   push(chunk: Buffer) {
     this.buffer = Buffer.concat([this.buffer, chunk]);
-    const frames: Buffer[] = [];
+    const frames: { stream: number; data: Buffer }[] = [];
     while (this.buffer.length >= 8) {
       const size = this.buffer.readUInt32BE(4);
       if (this.buffer.length < 8 + size) {
         break;
       }
-      frames.push(this.buffer.subarray(8, 8 + size));
+      frames.push({ stream: this.buffer[0], data: this.buffer.subarray(8, 8 + size) });
       this.buffer = this.buffer.subarray(8 + size);
     }
     return frames;
+  }
+}
+
+export interface LogLine {
+  stream: 'stdout' | 'stderr';
+  time: string;
+  text: string;
+}
+
+// oxlint-disable-next-line no-control-regex
+const escapes = /\u001b\[[0-?]*[ -/]*[@-~]/g;
+
+export class LogLines {
+  private decoders = { stdout: new TextDecoder(), stderr: new TextDecoder() };
+  private partial = { stdout: '', stderr: '' };
+
+  push(stream: LogLine['stream'], data: Buffer): LogLine[] {
+    const pieces = (this.partial[stream] + this.decoders[stream].decode(data, { stream: true })).split('\n');
+    this.partial[stream] = pieces.pop()!;
+    return pieces.map((piece) => {
+      const space = piece.indexOf(' ');
+      return { stream, time: piece.slice(0, space), text: piece.slice(space + 1).replace(escapes, '').replace(/\r$/, '') };
+    });
   }
 }

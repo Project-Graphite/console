@@ -3,6 +3,7 @@ import { bytes, percent, ranges, type HistoryData, type Range } from '../api';
 import { load, save } from '../stored';
 import { usePoll } from '../usePoll';
 import { Chart } from './Chart';
+import { Segmented } from './Segmented';
 
 export function Metrics({ query, cpuMax, memoryMax }: { query: string; cpuMax?: number; memoryMax?: number }) {
   const [range, setRange] = useState<Range>(() => {
@@ -15,22 +16,15 @@ export function Metrics({ query, cpuMax, memoryMax }: { query: string; cpuMax?: 
     <section className="stat-card space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="mono-sm text-muted">Usage</h2>
-        <div aria-label="Time range" className="flex gap-1" role="group">
-          {ranges.map((option) => (
-            <button
-              aria-pressed={option === range}
-              className={`mono-sm rounded-md border px-2 py-0.5 ${option === range ? 'border-line bg-paper text-ink' : 'border-transparent text-muted hover:text-ink'}`}
-              key={option}
-              onClick={() => {
-                setRange(option);
-                save('console.range', option);
-              }}
-              type="button"
-            >
-              {option}
-            </button>
-          ))}
-        </div>
+        <Segmented
+          label="Time range"
+          onChange={(option) => {
+            setRange(option);
+            save('console.range', option);
+          }}
+          options={ranges}
+          value={range}
+        />
       </div>
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {chart ? (

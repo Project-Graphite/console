@@ -351,7 +351,7 @@ server.on('upgrade', (request, socket, head) => {
       }
       const run =
         url.pathname === '/ws/logs'
-          ? logs(client, found!.id)
+          ? logs(client, found!.id, url.searchParams)
           : url.pathname === '/ws/terminal'
             ? terminal(client, { container: found!.id })
             : url.pathname === '/ws/host'
