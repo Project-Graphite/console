@@ -62,7 +62,7 @@ export function Docs({ path }: { path: string }) {
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-[15rem_1fr]">
       <aside className="space-y-4 lg:sticky lg:top-4 lg:max-h-[calc(100vh-6rem)] lg:self-start lg:overflow-y-auto">
-        <TextField label="Search the handbook" onChange={(event) => setFilter(event.target.value)} type="search" value={filter} />
+        <TextField aria-label="Search the handbook" onChange={(event) => setFilter(event.target.value)} placeholder="Search the handbook" type="search" value={filter} />
         <div className="hidden lg:block">
           <Navigation current={current} filter={filter} pages={data} />
         </div>
