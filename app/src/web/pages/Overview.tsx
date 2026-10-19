@@ -82,7 +82,7 @@ function ProjectList({ projects }: { projects: Project[] }) {
     <section className="stat-card space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="mono-sm text-muted">Projects</h2>
-        <MuiTextField className="w-56" onChange={(event) => setFilter(event.target.value)} placeholder="Filter projects" size="small" slotProps={{ htmlInput: { 'aria-label': 'Filter projects' } }} type="search" value={filter} />
+        <MuiTextField className="w-56" label="Filter projects" onChange={(event) => setFilter(event.target.value)} size="small" type="search" value={filter} />
       </div>
       <div className="overflow-x-auto">
         <table className="data-table">
