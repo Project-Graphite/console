@@ -1,4 +1,4 @@
-import { ConfirmDialog, ErrorState, PageHeader, timeAgo } from '@project-graphite/ui';
+import { Button, ConfirmDialog, ErrorState, PageHeader, timeAgo } from '@project-graphite/ui';
 import { useState } from 'react';
 import { bytes, can, type Disk, type Image, post, shortImage, type User } from '../api';
 import { usePoll } from '../usePoll';
@@ -19,9 +19,7 @@ export function Images({ user }: { user: User }) {
       <PageHeader
         actions={
           can(user, 'area:images') && (
-            <button className="secondary-button" onClick={() => setPruning(true)} type="button">
-              Remove dangling images
-            </button>
+            <Button onClick={() => setPruning(true)}>Remove dangling images</Button>
           )
         }
         title="Images"

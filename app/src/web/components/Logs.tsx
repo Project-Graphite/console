@@ -1,3 +1,11 @@
+import ButtonBase from '@mui/material/ButtonBase';
+import IconButton from '@mui/material/IconButton';
+import InputAdornment from '@mui/material/InputAdornment';
+import ListSubheader from '@mui/material/ListSubheader';
+import MenuItem from '@mui/material/MenuItem';
+import MenuList from '@mui/material/MenuList';
+import TextField from '@mui/material/TextField';
+import ToggleButton from '@mui/material/ToggleButton';
 import { Icon, Popover, TagChip } from '@project-graphite/ui';
 import { memo, useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { socketUrl } from '../api';
@@ -22,8 +30,7 @@ const levelColors: Record<Level, { text: string; dot: string }> = {
   info: { text: 'text-indigo-300', dot: 'bg-indigo-300' },
 };
 const findShortcut = /Mac|iPhone|iPad/.test(navigator.userAgent) ? '⌘F' : 'Ctrl+F';
-const menuClass = 'absolute top-[calc(100%+0.4rem)] right-0 w-56 py-1';
-const triggerClass = 'inline-flex h-8 items-center gap-1.5 rounded-lg border border-line px-2.5 text-xs text-muted hover:text-ink aria-expanded:text-ink';
+const menuClass = 'w-56';
 
 function Glyph({ path, stroke = false }: { path: string; stroke?: boolean }) {
   return (
@@ -43,27 +50,26 @@ function Glyph({ path, stroke = false }: { path: string; stroke?: boolean }) {
 }
 
 function ToolButton({ active, children, disabled, label, onClick }: { active?: boolean; children: ReactNode; disabled?: boolean; label: string; onClick: () => void }) {
+  if (active === undefined) {
+    return (
+      <IconButton aria-label={label} disabled={disabled} onClick={onClick} size="small" title={label}>
+        {children}
+      </IconButton>
+    );
+  }
   return (
-    <button
-      aria-label={label}
-      aria-pressed={active}
-      className={`inline-flex size-7 items-center justify-center rounded-md transition-colors disabled:opacity-40 ${active ? 'bg-ink text-paper' : 'text-muted hover:bg-line-soft hover:text-ink'}`}
-      disabled={disabled}
-      onClick={onClick}
-      title={label}
-      type="button"
-    >
+    <ToggleButton aria-label={label} className="border-0" disabled={disabled} onChange={onClick} selected={active} size="small" title={label} value={label}>
       {children}
-    </button>
+    </ToggleButton>
   );
 }
 
 function MenuCheck({ checked, children, onClick }: { checked: boolean; children: ReactNode; onClick: () => void }) {
   return (
-    <button aria-checked={checked} className="menu-item flex w-full items-center gap-2" onClick={onClick} role="menuitemcheckbox" type="button">
+    <MenuItem aria-checked={checked} className="gap-2" dense onClick={onClick} role="menuitemcheckbox">
       {children}
       <span className="ml-auto">{checked && <Icon name="check-mark" size={14} />}</span>
-    </button>
+    </MenuItem>
   );
 }
 
@@ -334,66 +340,71 @@ export function Logs({ collapsible = false, container, name, open = true, runnin
         </div>
         <div className="ml-auto flex flex-wrap items-center gap-2">
           <form
-            className="flex h-8 items-center overflow-hidden rounded-lg border border-line text-xs"
             onSubmit={(event) => {
               event.preventDefault();
               applyLines();
             }}
           >
-            <span className="border-r border-line px-2 text-muted">Lines</span>
-            <input
-              aria-label="Number of lines"
-              className="h-full min-h-0 w-16 rounded-none border-0 bg-transparent px-2 py-0"
-              max={keep}
-              min={1}
+            <TextField
+              className="w-28"
+              label="Lines"
               onBlur={applyLines}
               onChange={(event) => setDraft(event.target.value)}
-              title={`Number of lines (max ${keep.toLocaleString()})`}
+              size="small"
+              slotProps={{ htmlInput: { 'aria-label': 'Number of lines', max: keep, min: 1, title: `Number of lines (max ${keep.toLocaleString()})` } }}
               type="number"
               value={draft}
             />
           </form>
-          <div className="relative">
-            <span className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-faint">
-              <Icon name="search" size={14} />
-            </span>
-            <input
-              aria-keyshortcuts={findShortcut === '⌘F' ? 'Meta+F' : 'Control+F'}
-              aria-label="Find in logs"
-              className="h-8 min-h-0 w-48 rounded-lg py-0 pr-12 pl-8 text-xs"
-              onChange={(event) => setQuery(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Escape') {
-                  setQuery('');
-                }
-              }}
-              placeholder="Find in logs"
-              ref={search}
-              type="text"
-              value={query}
-            />
-            {query ? (
-              <button aria-label="Clear search" className="absolute top-1/2 right-2 -translate-y-1/2 text-faint hover:text-ink" onClick={() => setQuery('')} type="button">
-                <Icon name="x" size={12} />
-              </button>
-            ) : (
-              <kbd className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 rounded border border-line px-1 font-sans text-[10px] text-faint">{findShortcut}</kbd>
-            )}
-          </div>
+          <TextField
+            className="w-56"
+            inputRef={search}
+            onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') {
+                setQuery('');
+              }
+            }}
+            placeholder="Find in logs"
+            size="small"
+            slotProps={{
+              htmlInput: { 'aria-keyshortcuts': findShortcut === '⌘F' ? 'Meta+F' : 'Control+F', 'aria-label': 'Find in logs' },
+              input: {
+                endAdornment: (
+                  <InputAdornment position="end">
+                    {query ? (
+                      <IconButton aria-label="Clear search" edge="end" onClick={() => setQuery('')} size="small">
+                        <Icon name="x" size={12} />
+                      </IconButton>
+                    ) : (
+                      <kbd className="rounded border border-line px-1 font-sans text-[10px] text-faint">{findShortcut}</kbd>
+                    )}
+                  </InputAdornment>
+                ),
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <Icon name="search" size={14} />
+                  </InputAdornment>
+                ),
+              },
+            }}
+            value={query}
+          />
           <Popover
             label="View options"
             panelClassName={menuClass}
             trigger={
-              <>
+              <span className="inline-flex items-center gap-1.5">
                 <Icon name="settings" size={14} /> View <Icon name="chevron-down" size={12} />
-              </>
+              </span>
             }
-            triggerClassName={`${triggerClass} ${levels.some((level) => !shown[level]) ? 'border-ink text-ink' : ''}`}
+            triggerClassName={levels.some((level) => !shown[level]) ? 'border-ink text-ink' : undefined}
             triggerLabel="View options"
+            triggerVariant="secondary"
           >
             {() => (
-              <div role="menu">
-                <p className="px-4 pt-2 pb-1 text-xs text-faint">Display</p>
+              <MenuList dense>
+                <ListSubheader className="bg-transparent leading-8">Display</ListSubheader>
                 <MenuCheck checked={timestamps} onClick={() => setTimestamps(!timestamps)}>
                   Timestamps
                 </MenuCheck>
@@ -403,31 +414,30 @@ export function Logs({ collapsible = false, container, name, open = true, runnin
                 <MenuCheck checked={colors} onClick={() => setColors(!colors)}>
                   Color by level
                 </MenuCheck>
-                <p className="px-4 pt-2 pb-1 text-xs text-faint">Log levels</p>
+                <ListSubheader className="bg-transparent leading-8">Log levels</ListSubheader>
                 {levels.map((level) => (
                   <MenuCheck checked={shown[level]} key={level} onClick={() => setShown({ ...shown, [level]: !shown[level] })}>
                     <span className={`size-2.5 rounded-full ${levelColors[level].dot}`} />
                     <span className="capitalize">{level}</span>
                   </MenuCheck>
                 ))}
-              </div>
+              </MenuList>
             )}
           </Popover>
           <Popover
             label="Copy or download logs"
             panelClassName={menuClass}
             trigger={
-              <>
+              <span className="inline-flex items-center gap-1.5">
                 <Icon name="download" size={14} /> Export <Icon name="chevron-down" size={12} />
-              </>
+              </span>
             }
-            triggerClassName={triggerClass}
             triggerLabel="Copy or download logs"
+            triggerVariant="secondary"
           >
             {(close) => (
-              <div role="menu">
-                <button
-                  className="menu-item w-full"
+              <MenuList dense>
+                <MenuItem
                   onClick={() => {
                     close();
                     navigator.clipboard.writeText(displayed()).then(
@@ -435,26 +445,21 @@ export function Logs({ collapsible = false, container, name, open = true, runnin
                       () => flash('The browser refused clipboard access.'),
                     );
                   }}
-                  role="menuitem"
-                  type="button"
                 >
                   Copy logs
-                </button>
-                <button
-                  className="menu-item w-full"
+                </MenuItem>
+                <MenuItem
                   onClick={() => {
                     close();
                     downloadDisplayed();
                   }}
-                  role="menuitem"
-                  type="button"
                 >
                   Download displayed logs
-                </button>
-                <a className="menu-item" download href={`/api/containers/${container}/logs`} onClick={close} role="menuitem">
+                </MenuItem>
+                <MenuItem component="a" download href={`/api/containers/${container}/logs`} onClick={close}>
                   Download all logs
-                </a>
-              </div>
+                </MenuItem>
+              </MenuList>
             )}
           </Popover>
         </div>
@@ -509,13 +514,13 @@ export function Logs({ collapsible = false, container, name, open = true, runnin
     <div data-logs={fullscreen ? 'fullscreen' : expanded ? 'expanded' : 'collapsed'} ref={root}>
       {collapsible ? (
         <div className="rounded-xl border border-line bg-surface">
-          <button aria-expanded={expanded} className="flex w-full items-center gap-2 px-3.5 py-2.5 text-left hover:bg-line-soft" onClick={() => setExpanded(!expanded)} type="button">
+          <ButtonBase aria-expanded={expanded} className="flex w-full items-center justify-start gap-2 px-3.5 py-2.5 text-left hover:bg-line-soft" onClick={() => setExpanded(!expanded)}>
             <span className={`transition-transform ${expanded ? 'rotate-90' : ''}`}>
               <Icon name="chevron-right" size={14} />
             </span>
             <span className="mono-sm truncate">{name}</span>
             {expanded && status === 'live' && <span className="size-1.5 animate-pulse rounded-full bg-live" />}
-          </button>
+          </ButtonBase>
           {expanded && <div className="border-t border-line">{panel}</div>}
         </div>
       ) : (

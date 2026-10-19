@@ -1,4 +1,4 @@
-import { ErrorState, PageHeader, TagChip, timeAgo } from '@project-graphite/ui';
+import { Button, Checkbox, ErrorState, PageHeader, TagChip, timeAgo } from '@project-graphite/ui';
 import { useState } from 'react';
 import { post, type Member, type Overview } from '../api';
 import { usePoll } from '../usePoll';
@@ -26,19 +26,16 @@ function Access({ member, projects, onSaved }: { member: Member; projects: strin
     );
   };
   const option = (scope: string, label: string, disabled = false) => (
-    <label className={`flex items-center gap-1.5 text-sm ${disabled ? 'text-faint' : ''}`} key={scope}>
-      <input checked={everything || scopes.includes(scope)} disabled={disabled} onChange={() => toggle(scope)} type="checkbox" />
-      {label}
-    </label>
+    <Checkbox checked={everything || scopes.includes(scope)} disabled={disabled} key={scope} label={label} onChange={() => toggle(scope)} />
   );
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap gap-x-4 gap-y-1">{areas.map((area) => option(area.scope, area.label, area.scope !== '*' && everything))}</div>
       <div className="flex flex-wrap gap-x-4 gap-y-1">{projects.map((slug) => option(`project:${slug}`, slug, everything))}</div>
       <div className="flex items-center gap-3">
-        <button className="secondary-button" disabled={!changed} onClick={save} type="button">
+        <Button disabled={!changed} onClick={save} size="small">
           Save
-        </button>
+        </Button>
         {message && <span className="mono-sm text-muted">{message}</span>}
       </div>
     </div>
