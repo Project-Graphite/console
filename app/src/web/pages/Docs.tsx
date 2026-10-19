@@ -1,4 +1,5 @@
-import { ErrorState } from '@project-graphite/ui';
+import MuiLink from '@mui/material/Link';
+import { ErrorState, TextField } from '@project-graphite/ui';
 import { useEffect, useMemo, useState } from 'react';
 import type { DocPage } from '../api';
 import { render, sourceOf } from '../markdown';
@@ -61,7 +62,7 @@ export function Docs({ path }: { path: string }) {
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-[15rem_1fr]">
       <aside className="space-y-4 lg:sticky lg:top-4 lg:max-h-[calc(100vh-6rem)] lg:self-start lg:overflow-y-auto">
-        <input aria-label="Search the handbook" className="w-full" onChange={(event) => setFilter(event.target.value)} placeholder="Search the handbook" type="search" value={filter} />
+        <TextField label="Search the handbook" onChange={(event) => setFilter(event.target.value)} type="search" value={filter} />
         <div className="hidden lg:block">
           <Navigation current={current} filter={filter} pages={data} />
         </div>
@@ -75,9 +76,9 @@ export function Docs({ path }: { path: string }) {
       {page && html ? (
         <article className="min-w-0 space-y-4">
           <div className="doc-body" dangerouslySetInnerHTML={{ __html: html }} />
-          <a className="mono-sm rule-link text-muted" href={sourceOf(page.path)} rel="noreferrer" target="_blank">
+          <MuiLink className="mono-sm text-muted" href={sourceOf(page.path)} rel="noreferrer" target="_blank" underline="always">
             Edit {page.path} on GitHub
-          </a>
+          </MuiLink>
         </article>
       ) : (
         <ErrorState title="No such page">{current} is not in the handbook.</ErrorState>

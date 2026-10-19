@@ -1,4 +1,5 @@
-import { ErrorState, PageHeader, TagChip } from '@project-graphite/ui';
+import MuiLink from '@mui/material/Link';
+import { Button, ErrorState, PageHeader, TagChip } from '@project-graphite/ui';
 import { useState } from 'react';
 import { bytes, can, percent, post, shortImage, stateColor, stateOf, type ProjectDetail, type User } from '../api';
 import { Logs } from '../components/Logs';
@@ -19,9 +20,7 @@ function Wake({ slug, onWoken }: { slug: string; onWoken: () => void }) {
   };
   return (
     <span className="flex items-center gap-2">
-      <button className="secondary-button" onClick={wake} type="button">
-        Wake project
-      </button>
+      <Button onClick={wake}>Wake project</Button>
       {message && <span className="mono-sm text-muted">{message}</span>}
     </span>
   );
@@ -40,7 +39,7 @@ export function ProjectPage({ slug, user }: { slug: string; user: User }) {
     <div className="space-y-6">
       <PageHeader
         actions={can(user, `project:${slug}`) && project.sleeps && <Wake onWoken={() => void reload()} slug={slug} />}
-        eyebrow={<a className="rule-link" href="#/">Overview</a>}
+        eyebrow={<MuiLink href="#/" underline="always">Overview</MuiLink>}
         title={slug}
       >
         <span className="flex flex-wrap items-center gap-2">
@@ -70,9 +69,9 @@ export function ProjectPage({ slug, user }: { slug: string; user: User }) {
               {project.containers.map((container) => (
                 <tr key={container.id}>
                   <td>
-                    <a className="rule-link" href={`#/container/${container.id.slice(0, 12)}`}>
+                    <MuiLink href={`#/container/${container.id.slice(0, 12)}`} underline="always">
                       {container.service}
-                    </a>
+                    </MuiLink>
                   </td>
                   <td className="whitespace-nowrap">
                     <TagChip color={stateColor(container)} label={stateOf(container)} />

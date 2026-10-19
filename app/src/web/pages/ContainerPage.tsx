@@ -1,4 +1,5 @@
-import { ConfirmDialog, ErrorState, PageHeader, TagChip, timeAgo } from '@project-graphite/ui';
+import MuiLink from '@mui/material/Link';
+import { Button, ConfirmDialog, ErrorState, PageHeader, TagChip, timeAgo } from '@project-graphite/ui';
 import { useState } from 'react';
 import { can, post, stateColor, stateOf, type Container, type Overview, type User } from '../api';
 import { Logs } from '../components/Logs';
@@ -19,19 +20,15 @@ function Actions({ container, project, sleeps }: { container: Container; project
     <div className="flex flex-wrap items-center gap-2">
       {container.state === 'running' ? (
         <>
-          <button className="secondary-button" onClick={() => setConfirm('restart')} type="button">Restart</button>
-          <button className="secondary-button" onClick={() => setConfirm('stop')} type="button">Stop</button>
+          <Button onClick={() => setConfirm('restart')}>Restart</Button>
+          <Button onClick={() => setConfirm('stop')}>Stop</Button>
         </>
       ) : (
-        <button className="primary-button" onClick={() => attempt(`/api/containers/${container.id}/start`, 'Started.')} type="button">
+        <Button onClick={() => attempt(`/api/containers/${container.id}/start`, 'Started.')} variant="primary">
           Start
-        </button>
+        </Button>
       )}
-      {sleeps && (
-        <button className="secondary-button" onClick={() => attempt(`/api/projects/${project}/wake`, 'Awake for 30 minutes.')} type="button">
-          Wake project
-        </button>
-      )}
+      {sleeps && <Button onClick={() => attempt(`/api/projects/${project}/wake`, 'Awake for 30 minutes.')}>Wake project</Button>}
       {message && <span className="mono-sm text-muted">{message}</span>}
       {confirm && (
         <ConfirmDialog
@@ -59,9 +56,9 @@ function Ports({ container, ssh }: { container: Container; ssh: string | null })
         <div className="space-y-1" key={port}>
           <div className="flex flex-wrap items-center gap-3">
             <span className="mono-sm">{port}</span>
-            <a className="rule-link" href={`/open/${container.id}/${port}/`} rel="noreferrer" target="_blank">
+            <MuiLink href={`/open/${container.id}/${port}/`} rel="noreferrer" target="_blank" underline="always">
               open in the browser
-            </a>
+            </MuiLink>
           </div>
           {address && ssh && (
             <code className="mono-sm block break-all text-faint">
@@ -95,7 +92,7 @@ export function ContainerPage({ id, user }: { id: string; user: User }) {
     <div className="space-y-6">
       <PageHeader
         actions={writable && <Actions container={container} project={project.slug} sleeps={project.sleeps} />}
-        eyebrow={<a className="rule-link" href={`#/project/${project.slug}`}>{project.slug}</a>}
+        eyebrow={<MuiLink href={`#/project/${project.slug}`} underline="always">{project.slug}</MuiLink>}
         title={container.service}
       >
         <span className="flex flex-wrap items-center gap-2">
@@ -134,9 +131,7 @@ export function ContainerPage({ id, user }: { id: string; user: User }) {
         <section className="space-y-2">
           <div className="flex items-center gap-3">
             <h2 className="mono-sm text-muted">Shell</h2>
-            <button className="secondary-button" onClick={() => setShell(!shell)} type="button">
-              {shell ? 'Close' : 'Open a shell'}
-            </button>
+            <Button onClick={() => setShell(!shell)}>{shell ? 'Close' : 'Open a shell'}</Button>
           </div>
           {shell && <LazyTerminal path={`/ws/terminal?container=${container.id}`} />}
         </section>

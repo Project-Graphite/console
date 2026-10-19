@@ -11,7 +11,10 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@project-graphite/ui": "https://github.com/project-graphite/graphite-ui/releases/download/v0.4.3/project-graphite-ui-0.4.3.tgz",
+    "@emotion/react": "11.14.0",
+    "@emotion/styled": "11.14.1",
+    "@mui/material": "9.5.0",
+    "@project-graphite/ui": "https://github.com/project-graphite/graphite-ui/releases/download/v1.0.0/project-graphite-ui-1.0.0.tgz",
     "@xterm/addon-fit": "0.11.0",
     "@xterm/xterm": "6.0.0",
     "marked": "18.0.14",

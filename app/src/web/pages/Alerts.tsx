@@ -1,3 +1,4 @@
+import MuiLink from '@mui/material/Link';
 import { EmptyState, ErrorState, PageHeader, timeAgo } from '@project-graphite/ui';
 import type { Alert, AlertsData } from '../api';
 import { usePoll } from '../usePoll';
@@ -9,9 +10,9 @@ function duration(from: number, to: number) {
 
 function Issue({ alert, repo }: { alert: Alert; repo: string }) {
   return alert.issue ? (
-    <a className="mono-sm rule-link text-muted" href={`https://github.com/${repo}/issues/${alert.issue}`} rel="noreferrer" target="_blank">
+    <MuiLink className="mono-sm text-muted" href={`https://github.com/${repo}/issues/${alert.issue}`} rel="noreferrer" target="_blank" underline="always">
       issue #{alert.issue}
-    </a>
+    </MuiLink>
   ) : null;
 }
 

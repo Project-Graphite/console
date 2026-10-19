@@ -1,3 +1,5 @@
+import Alert from '@mui/material/Alert';
+import MuiLink from '@mui/material/Link';
 import { AppShell, type ShellNavItem, type ShellTab } from '@project-graphite/ui';
 import { useEffect, useState } from 'react';
 import { can, get, Unauthorized, type AlertsData, type User } from './api';
@@ -79,9 +81,9 @@ export function App() {
             <span className="mono-sm hidden text-muted sm:inline">
               {user.login} · {user.owner ? 'owner' : 'member'}
             </span>
-            <a className="mono-sm rule-link" href="/auth/logout">
+            <MuiLink className="mono-sm" href="/auth/logout" underline="always">
               sign out
-            </a>
+            </MuiLink>
           </span>
         )
       }
@@ -90,7 +92,7 @@ export function App() {
       tabs={pages}
     >
       <main className="shell py-6" id="content">
-        {error && <p className="error-message">{error}</p>}
+        {error && <Alert severity="error">{error}</Alert>}
         {user && <Page hash={hash} user={user} />}
       </main>
     </AppShell>

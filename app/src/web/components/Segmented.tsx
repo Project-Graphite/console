@@ -1,3 +1,6 @@
+import ToggleButton from '@mui/material/ToggleButton';
+import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
+
 export function Segmented<T extends string | number>({
   label,
   onChange,
@@ -10,18 +13,12 @@ export function Segmented<T extends string | number>({
   value: T;
 }) {
   return (
-    <div aria-label={label} className="flex gap-1" role="group">
+    <ToggleButtonGroup aria-label={label} exclusive onChange={(_, next: T | null) => next !== null && onChange(next)} size="small" value={value}>
       {options.map((option) => (
-        <button
-          aria-pressed={option === value}
-          className={`mono-sm rounded-md border px-2 py-0.5 ${option === value ? 'border-line bg-paper text-ink' : 'border-transparent text-muted hover:text-ink'}`}
-          key={option}
-          onClick={() => onChange(option)}
-          type="button"
-        >
+        <ToggleButton className="mono-sm px-2 py-0.5 normal-case" key={option} value={option}>
           {option}
-        </button>
+        </ToggleButton>
       ))}
-    </div>
+    </ToggleButtonGroup>
   );
 }

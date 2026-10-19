@@ -1,3 +1,6 @@
+import IconButton from '@mui/material/IconButton';
+import MuiLink from '@mui/material/Link';
+import MuiTextField from '@mui/material/TextField';
 import { EmptyState, ErrorState, Meter, PageHeader, TagChip } from '@project-graphite/ui';
 import { useState } from 'react';
 import { bytes, completed, percent, type AlertsData, type Host, type Overview as OverviewData, type Project } from '../api';
@@ -79,7 +82,7 @@ function ProjectList({ projects }: { projects: Project[] }) {
     <section className="stat-card space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="mono-sm text-muted">Projects</h2>
-        <input aria-label="Filter projects" className="max-w-56" onChange={(event) => setFilter(event.target.value)} placeholder="Filter projects" type="search" value={filter} />
+        <MuiTextField className="w-56" label="Filter projects" onChange={(event) => setFilter(event.target.value)} size="small" type="search" value={filter} />
       </div>
       <div className="overflow-x-auto">
         <table className="data-table">
@@ -97,20 +100,20 @@ function ProjectList({ projects }: { projects: Project[] }) {
             {shown.map((project) => (
               <tr key={project.slug}>
                 <td className="w-8">
-                  <button
+                  <IconButton
                     aria-label={pinned.includes(project.slug) ? `Unpin ${project.slug}` : `Pin ${project.slug}`}
                     aria-pressed={pinned.includes(project.slug)}
-                    className={pinned.includes(project.slug) ? 'text-ink' : 'text-faint hover:text-muted'}
+                    className={pinned.includes(project.slug) ? 'text-ink' : 'text-faint'}
                     onClick={() => toggle(project.slug)}
-                    type="button"
+                    size="small"
                   >
                     {pinned.includes(project.slug) ? '★' : '☆'}
-                  </button>
+                  </IconButton>
                 </td>
                 <td>
-                  <a className="rule-link" href={`#/project/${project.slug}`}>
+                  <MuiLink href={`#/project/${project.slug}`} underline="always">
                     {project.slug}
-                  </a>
+                  </MuiLink>
                 </td>
                 <td className="whitespace-nowrap">{status(project)}</td>
                 <td className="mono-sm whitespace-nowrap">{percent(project.cpu)}</td>
