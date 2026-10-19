@@ -1,3 +1,4 @@
+import Alert from '@mui/material/Alert';
 import MuiLink from '@mui/material/Link';
 import { AppShell, type ShellNavItem, type ShellTab } from '@project-graphite/ui';
 import { useEffect, useState } from 'react';
@@ -91,7 +92,7 @@ export function App() {
       tabs={pages}
     >
       <main className="shell py-6" id="content">
-        {error && <p className="error-message">{error}</p>}
+        {error && <Alert severity="error">{error}</Alert>}
         {user && <Page hash={hash} user={user} />}
       </main>
     </AppShell>
