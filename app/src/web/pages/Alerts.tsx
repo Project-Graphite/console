@@ -1,10 +1,11 @@
 import MuiLink from '@mui/material/Link';
 import MuiTextField from '@mui/material/TextField';
-import { EmptyState, ErrorState, PageHeader, timeAgo, Toggle } from '@project-graphite/ui';
+import { EmptyState, ErrorState, PageHeader, timeAgo } from '@project-graphite/ui';
 import { useState } from 'react';
 import { post, type Alert, type AlertRule, type AlertsData } from '../api';
 import { ActionButton } from '../components/ActionButton';
 import { Rail, WithRail } from '../components/Rail';
+import { Switch } from '../components/Switch';
 import { usePoll } from '../usePoll';
 
 function RuleRow({ rule, owner, onSaved }: { rule: AlertRule; owner: boolean; onSaved: () => void }) {
@@ -15,7 +16,7 @@ function RuleRow({ rule, owner, onSaved }: { rule: AlertRule; owner: boolean; on
   return (
     <tr>
       <td>
-        <Toggle checked={enabled} disabled={!owner} label={rule.label} onChange={setEnabled} />
+        <Switch checked={enabled} disabled={!owner} label={rule.label} onChange={setEnabled} />
       </td>
       <td>
         {rule.unit ? (
@@ -30,7 +31,7 @@ function RuleRow({ rule, owner, onSaved }: { rule: AlertRule; owner: boolean; on
             value={threshold}
           />
         ) : (
-          <span className="mono-sm text-faint">—</span>
+          <span className="mono-sm text-faint">Ã¢â‚¬â€</span>
         )}
       </td>
       <td>
@@ -49,7 +50,7 @@ function RuleRow({ rule, owner, onSaved }: { rule: AlertRule; owner: boolean; on
         {owner && (
           <ActionButton
             disabled={!changed}
-            labels={{ idle: 'Save', busy: 'Saving…', done: 'Saved', failed: 'Retry' }}
+            labels={{ idle: 'Save', busy: 'SavingÃ¢â‚¬Â¦', done: 'Saved', failed: 'Retry' }}
             run={() => post(`/api/alerts/rules/${rule.kind}`, { threshold: Number(threshold), minutes: Number(minutes), enabled }).then(onSaved)}
           />
         )}
@@ -66,7 +67,7 @@ function Rules({ data, owner, onSaved }: { data: AlertsData; owner: boolean; onS
         {owner && (
           <ActionButton
             disabled={!data.emailing}
-            labels={{ idle: 'Send a test email', busy: 'Sending…', done: 'Sent', failed: 'Not sent' }}
+            labels={{ idle: 'Send a test email', busy: 'SendingÃ¢â‚¬Â¦', done: 'Sent', failed: 'Not sent' }}
             run={() => post('/api/alerts/test')}
           />
         )}

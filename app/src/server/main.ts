@@ -18,6 +18,7 @@ import { Refusal } from './refusal.ts';
 import { appliedAt, appliedCompose, appliedValueNames, redeployStatus, startRedeploy } from './rollout.ts';
 import { composeReferences, parseKeys, projectPattern, SecretStore } from './secrets.ts';
 import { LogStore } from './logstore.ts';
+import { release, setEnabled, setVersion } from './platform.ts';
 import { hostShell, type ShellMode } from './shell.ts';
 import { createVolume, downloadFile, listFiles, removeVolume } from './volumes.ts';
 import { downloadLogs, logs, terminal } from './terminal.ts';
@@ -150,10 +151,18 @@ function secretStore() {
   return store;
 }
 
-async function needsRedeploy(project: string, views: ContainerView[]) {
+async function redeployReasons(project: string, views: ContainerView[]) {
   const changed = store?.changedAt(project) ?? null;
   const created = views.filter((view) => view.project === project).map((view) => view.created);
-  return changed !== null && created.length > 0 && changed > Math.max(...created, (await appliedAt(project)) ?? 0);
+  if (changed === null || !created.length) {
+    return [];
+  }
+  const rollout = Math.max(...created, (await appliedAt(project)) ?? 0);
+  if (changed <= rollout) {
+    return [];
+  }
+  const changes = store!.changesSince(project, rollout);
+  return changes.length ? changes : [{ name: `${project}.env`, action: 'edited on the host', login: 'host', at: changed }];
 }
 
 async function secretProject(project: string) {
@@ -316,7 +325,7 @@ async function api(user: User, request: http.IncomingMessage, url: URL) {
         buildCache: usage.buildCache,
         volumes: usage.volumes.reduce((sum, volume) => sum + Math.max(0, volume.size), 0),
       },
-      projects: await Promise.all(list.map(async (project) => ({ ...project, needsRedeploy: await needsRedeploy(project.slug, project.containers) }))),
+      projects: await Promise.all(list.map(async (project) => ({ ...project, redeploy: await redeployReasons(project.slug, project.containers) }))),
     };
   }
   const project = /^GET \/api\/projects\/([a-z0-9-]+)$/.exec(route);
@@ -328,7 +337,12 @@ async function api(user: User, request: http.IncomingMessage, url: URL) {
       image.usedBy.push(container.service);
       images.set(container.imageId, image);
     }
-    return { ...found, images: [...images.values()], volumes: usage.volumes.filter((volume) => volume.project === found.slug) };
+    return {
+      ...found,
+      images: [...images.values()],
+      volumes: usage.volumes.filter((volume) => volume.project === found.slug),
+      redeploy: await redeployReasons(found.slug, found.containers),
+    };
   }
   if (route === 'GET /api/history') {
     const range = rangeOf(url);
@@ -415,6 +429,19 @@ async function api(user: User, request: http.IncomingMessage, url: URL) {
     await docker('POST', `/containers/${container.id}/${action[2]}`);
     await refresh();
     return { ok: true };
+  }
+  const releasing = /^(GET|POST) \/api\/projects\/([a-z0-9-]+)\/(release|enabled)$/.exec(route);
+  if (releasing) {
+    await requireOwnerNow(request);
+    if (releasing[1] === 'GET' && releasing[3] === 'release') {
+      return release(releasing[2]);
+    }
+    if (releasing[1] === 'POST') {
+      const input = (await body(request)) as { tag?: unknown; enabled?: unknown };
+      const url = releasing[3] === 'release' ? await setVersion(releasing[2], input.tag, user.login) : await setEnabled(releasing[2], input.enabled, user.login);
+      store?.audit(user.login, releasing[3] === 'release' ? `release ${String(input.tag)}` : input.enabled ? 'enable' : 'disable', releasing[2], null);
+      return { commit: url };
+    }
   }
   const redeploy = /^(GET|POST) \/api\/projects\/([a-z0-9-]+)\/redeploy$/.exec(route);
   if (redeploy) {

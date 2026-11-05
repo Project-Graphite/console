@@ -1,9 +1,10 @@
 import MuiTextField from '@mui/material/TextField';
-import { Button, Dialog, ErrorState, PageHeader, TagChip, timeAgo, Toggle } from '@project-graphite/ui';
+import { Button, Dialog, ErrorState, PageHeader, TagChip, timeAgo } from '@project-graphite/ui';
 import { useState } from 'react';
 import { post, type Member, type Overview } from '../api';
 import { ActionButton } from '../components/ActionButton';
 import { Rail, WithRail } from '../components/Rail';
+import { Switch } from '../components/Switch';
 import { usePoll } from '../usePoll';
 
 const areas = [
@@ -37,7 +38,7 @@ function AccessDialog({ member, projects, onClose, onSaved }: { member: Member; 
         <section className="space-y-2">
           <h3 className="mono-sm text-muted">Areas</h3>
           {areas.map((area) => (
-            <Toggle
+            <Switch
               checked={everything || scopes.includes(area.scope)}
               description={area.detail}
               disabled={area.scope !== '*' && everything}
@@ -71,10 +72,10 @@ function AccessDialog({ member, projects, onClose, onSaved }: { member: Member; 
                   <tr key={slug}>
                     <td className="mono-sm truncate">{slug}</td>
                     <td>
-                      <Toggle checked={everything || scopes.includes(`project:${slug}`)} disabled={everything} label={`Operate ${slug}`} onChange={(on) => set(`project:${slug}`, on)} />
+                      <Switch checked={everything || scopes.includes(`project:${slug}`)} disabled={everything} hideLabel label={`Operate ${slug}`} onChange={(on) => set(`project:${slug}`, on)} />
                     </td>
                     <td>
-                      <Toggle checked={scopes.includes(`secrets:${slug}`)} label={`Secrets of ${slug}`} onChange={(on) => set(`secrets:${slug}`, on)} />
+                      <Switch checked={scopes.includes(`secrets:${slug}`)} hideLabel label={`Secrets of ${slug}`} onChange={(on) => set(`secrets:${slug}`, on)} />
                     </td>
                   </tr>
                 ))}
@@ -89,7 +90,7 @@ function AccessDialog({ member, projects, onClose, onSaved }: { member: Member; 
           </Button>
           <ActionButton
             disabled={!changed}
-            labels={{ idle: 'Save', busy: 'Saving…', done: 'Saved', failed: 'Retry' }}
+            labels={{ idle: 'Save', busy: 'SavingÃ¢â‚¬Â¦', done: 'Saved', failed: 'Retry' }}
             run={() => post(`/api/admin/members/${member.login}`, { scopes }).then(onSaved)}
             variant="primary"
           />

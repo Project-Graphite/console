@@ -34,5 +34,10 @@ export const config = {
   sshTarget: process.env.SSH_TARGET ?? 'ubuntu@localhost',
   secretsKey: process.env.SECRETS_KEY || undefined,
   graphiteHome: process.env.GRAPHITE_HOME ?? '/srv/graphite',
+  platformRepo: process.env.PLATFORM_REPO ?? 'project-graphite/platform',
+  platformApp:
+    process.env.PLATFORM_APP_CLIENT_ID && process.env.PLATFORM_APP_PRIVATE_KEY
+      ? { clientId: process.env.PLATFORM_APP_CLIENT_ID, privateKey: process.env.PLATFORM_APP_PRIVATE_KEY.replaceAll('\\n', '\n') }
+      : undefined,
   webRoot: new URL('../web/', import.meta.url),
 };

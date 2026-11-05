@@ -1,4 +1,3 @@
-import ButtonBase from '@mui/material/ButtonBase';
 import IconButton from '@mui/material/IconButton';
 import InputAdornment from '@mui/material/InputAdornment';
 import ListSubheader from '@mui/material/ListSubheader';
@@ -9,6 +8,7 @@ import ToggleButton from '@mui/material/ToggleButton';
 import { Icon, Popover, TagChip } from '@project-graphite/ui';
 import { memo, useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { socketUrl } from '../api';
+import { Collapsible } from './Collapsible';
 import { entryDetail, formatTime, levelOf, levels, segments, type Level } from '../logs';
 import { usePreference } from '../stored';
 
@@ -513,16 +513,14 @@ export function Logs({ collapsible = false, container, name, open = true, runnin
   return (
     <div data-logs={fullscreen ? 'fullscreen' : expanded ? 'expanded' : 'collapsed'} ref={root}>
       {collapsible ? (
-        <div className="rounded-xl border border-line bg-surface">
-          <ButtonBase aria-expanded={expanded} className="flex w-full items-center justify-start gap-2 px-3.5 py-2.5 text-left hover:bg-line-soft" onClick={() => setExpanded(!expanded)}>
-            <span className={`transition-transform ${expanded ? 'rotate-90' : ''}`}>
-              <Icon name="chevron-right" size={14} />
-            </span>
-            <span className="mono-sm truncate">{name}</span>
-            {expanded && status === 'live' && <span className="size-1.5 animate-pulse rounded-full bg-live" />}
-          </ButtonBase>
-          {expanded && <div className="border-t border-line">{panel}</div>}
-        </div>
+        <Collapsible
+          adornment={expanded && status === 'live' && <span className="size-1.5 animate-pulse rounded-full bg-live" />}
+          onToggle={setExpanded}
+          open={expanded}
+          title={name}
+        >
+          {panel}
+        </Collapsible>
       ) : (
         panel
       )}

@@ -187,7 +187,7 @@ function SecretSheet({ prefix, secret, onClose, onSaved }: { prefix: string; sec
   );
 }
 
-export function SecretList({ project }: { project?: string }) {
+export function SecretList({ project, framed = true }: { project?: string; framed?: boolean }) {
   const { data, error, reload } = usePoll<{ projects?: SecretProject[]; project?: SecretProject; secrets: Secret[] }>(
     project ? `/api/secrets/${project}` : '/api/secrets',
     30_000,
@@ -230,7 +230,7 @@ export function SecretList({ project }: { project?: string }) {
   };
 
   return (
-    <section className="stat-card space-y-3">
+    <section className={framed ? 'stat-card space-y-3' : 'space-y-3 p-4'}>
       <div className="flex flex-wrap items-center gap-2">
         <SecretFilters filters={filters} onChange={setFilters} projects={project ? [] : all.map((entry) => entry.project)} />
         {message && <span className="mono-sm text-muted">{message}</span>}
@@ -251,7 +251,16 @@ export function SecretList({ project }: { project?: string }) {
         </span>
       </div>
       <div className="overflow-x-auto">
-        <table className="data-table">
+        <table className="data-table min-w-180 table-fixed">
+          <colgroup>
+            <col className="w-12" />
+            <col className="w-[30%]" />
+            <col className="w-[9%]" />
+            <col />
+            <col className="w-[8%]" />
+            <col className="w-[13%]" />
+            <col className="w-[13%]" />
+          </colgroup>
           <thead>
             <tr>
               <th aria-label="selected" />
@@ -291,7 +300,7 @@ export function SecretList({ project }: { project?: string }) {
                         <Checkbox aria-label={`Select ${path}`} checked={selected.includes(path)} onChange={() => toggle(path)} />
                       </td>
                       <td>
-                        <MuiLink className="mono-sm" href={`#/secrets${path}`} underline="always">
+                        <MuiLink className="mono-sm break-all" href={`#/secrets${path}`} underline="always">
                           {path}
                         </MuiLink>
                         {secret.value !== null && <div className="mono-sm break-all text-muted">{secret.value}</div>}
@@ -299,10 +308,14 @@ export function SecretList({ project }: { project?: string }) {
                       <td>
                         <TagChip color={secret.type === 'secure' ? 'gray' : 'blue'} label={secret.type} />
                       </td>
-                      <td className="text-muted">{secret.description}</td>
+                      <td className="truncate text-muted" title={secret.description}>
+                        {secret.description}
+                      </td>
                       <td className="mono-sm">v{secret.version}</td>
                       <td className="mono-sm whitespace-nowrap">{when(secret.updatedAt)}</td>
-                      <td className="mono-sm">{secret.updatedBy}</td>
+                      <td className="mono-sm truncate" title={secret.updatedBy}>
+                        {secret.updatedBy}
+                      </td>
                     </tr>
                   );
                 })}

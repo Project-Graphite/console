@@ -1,10 +1,11 @@
 import MuiLink from '@mui/material/Link';
 import MuiTextField from '@mui/material/TextField';
-import { Button, ConfirmDialog, ErrorState, PageHeader, Select, TagChip, timeAgo, Toggle } from '@project-graphite/ui';
+import { Button, ConfirmDialog, ErrorState, PageHeader, Select, TagChip, timeAgo } from '@project-graphite/ui';
 import { useRef, useState } from 'react';
 import { bytes, post, stampDate, type BackupSchedule, type BackupsData, type BackupSummary, type Overview } from '../api';
 import { ActionButton } from '../components/ActionButton';
 import { Rail, WithRail } from '../components/Rail';
+import { Switch } from '../components/Switch';
 import { usePoll } from '../usePoll';
 
 const requestColors = { waiting: 'gray', running: 'blue', done: 'green', failed: 'red' } as const;
@@ -20,7 +21,7 @@ function Archive({ archive, onRestore }: { archive: BackupSummary; onRestore: ()
     <tr>
       <td className="mono-sm whitespace-nowrap">
         {clock(stampDate(archive.stamp).getTime())}
-        <span className="text-faint"> · {timeAgo(stampDate(archive.stamp).toISOString())}</span>
+        <span className="text-faint"> Ã‚Â· {timeAgo(stampDate(archive.stamp).toISOString())}</span>
       </td>
       <td className="whitespace-nowrap">
         <span className="flex items-center gap-1">
@@ -31,7 +32,7 @@ function Archive({ archive, onRestore }: { archive: BackupSummary; onRestore: ()
       <td className="mono-sm text-muted">
         {[databases.length && `${databases.length} database dump${databases.length > 1 ? 's' : ''}`, volumes.length && `${volumes.length} volume${volumes.length > 1 ? 's' : ''}`, sqlite && `${sqlite} SQLite`]
           .filter(Boolean)
-          .join(' · ')}
+          .join(' Ã‚Â· ')}
         {archive.errors.length > 0 && <div className="break-all text-faint">{archive.errors.join('; ')}</div>}
       </td>
       <td className="mono-sm whitespace-nowrap">{bytes(archive.bytes)}</td>
@@ -62,7 +63,7 @@ function ScheduleEditor({ schedule, onSaved }: { schedule: BackupSchedule; onSav
   return (
     <div className="space-y-3 border-t border-line-soft pt-4">
       <h3 className="mono-sm text-muted">Schedule</h3>
-      <Toggle checked={enabled} label="Back up on a schedule" onChange={setEnabled} />
+      <Switch checked={enabled} label="Back up on a schedule" onChange={setEnabled} />
       <Select
         disabled={!enabled}
         label="Frequency"
@@ -89,7 +90,7 @@ function ScheduleEditor({ schedule, onSaved }: { schedule: BackupSchedule; onSav
       <div className="flex justify-end">
         <ActionButton
           disabled={!changed}
-          labels={{ idle: 'Save', busy: 'Saving…', done: 'Saved', failed: 'Retry' }}
+          labels={{ idle: 'Save', busy: 'SavingÃ¢â‚¬Â¦', done: 'Saved', failed: 'Retry' }}
           run={() => post('/api/backups/schedule', { enabled, everyHours, hour, keepDays: Number(keepDays) }).then(onSaved)}
         />
       </div>
@@ -124,7 +125,7 @@ function Import({ projects, onDone }: { projects: string[]; onDone: () => void }
         </Button>
         <input accept=".tar,application/x-tar" className="hidden" onChange={(event) => setName(event.target.files?.[0]?.name ?? '')} ref={file} type="file" />
         <span className="ml-auto">
-          <ActionButton disabled={!project || !name} labels={{ idle: 'Upload', busy: 'Uploading…', done: 'Uploaded', failed: 'Retry' }} run={send} variant="primary" />
+          <ActionButton disabled={!project || !name} labels={{ idle: 'Upload', busy: 'UploadingÃ¢â‚¬Â¦', done: 'Uploaded', failed: 'Retry' }} run={send} variant="primary" />
         </span>
       </div>
     </section>
@@ -154,7 +155,7 @@ export function Backups() {
           <Rail
             stats={[
               { label: 'Schedule', value: data.schedule.enabled ? `${every(data.schedule.everyHours)} from ${String(data.schedule.hour).padStart(2, '0')}:00 UTC` : 'off', pill: data.schedule.enabled ? 'green' : 'gray' },
-              { label: 'Next run', value: data.next ? `${clock(data.next)} UTC` : '—' },
+              { label: 'Next run', value: data.next ? `${clock(data.next)} UTC` : 'Ã¢â‚¬â€' },
               { label: 'Last run', value: last ? timeAgo(stampDate(last).toISOString()) : 'never' },
               {
                 label: 'Latest per project',
@@ -209,7 +210,7 @@ export function Backups() {
                 {project}
                 {list[0] && <TagChip color={list[0].ok ? 'green' : 'red'} label={list[0].ok ? 'latest verified' : 'latest failed'} />}
               </h2>
-              <ActionButton labels={{ idle: 'Back up now', busy: 'Requesting…', done: 'Requested', failed: 'Retry' }} run={() => post(`/api/backups/${project}/run`).then(() => reload())} />
+              <ActionButton labels={{ idle: 'Back up now', busy: 'RequestingÃ¢â‚¬Â¦', done: 'Requested', failed: 'Retry' }} run={() => post(`/api/backups/${project}/run`).then(() => reload())} />
             </header>
             <div className="overflow-x-auto">
               <table className="data-table min-w-180 table-fixed">

@@ -1,6 +1,7 @@
-import { ConfirmDialog, PageHeader, TagChip, Toggle } from '@project-graphite/ui';
+import { ConfirmDialog, PageHeader, TagChip } from '@project-graphite/ui';
 import { useState } from 'react';
 import { LazyTerminal } from '../components/LazyTerminal';
+import { Switch } from '../components/Switch';
 
 export function HostShell({ owner }: { owner: boolean }) {
   const [root, setRoot] = useState(false);
@@ -8,7 +9,7 @@ export function HostShell({ owner }: { owner: boolean }) {
   return (
     <div className="space-y-4">
       <PageHeader
-        actions={owner && <Toggle checked={root} label="Root shell" onChange={(on) => (on ? setAsking(true) : setRoot(false))} />}
+        actions={owner && <Switch checked={root} label="Root shell" onChange={(on) => (on ? setAsking(true) : setRoot(false))} />}
         title="VPS shell"
       >
         <span className="flex flex-wrap items-center gap-2">

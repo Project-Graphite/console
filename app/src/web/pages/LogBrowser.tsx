@@ -1,9 +1,10 @@
 import MuiTextField from '@mui/material/TextField';
-import { Button, Checkbox, Icon, PageHeader, Popover, TagChip, timeAgo, Toggle, type TagColor } from '@project-graphite/ui';
+import { Button, Checkbox, Icon, PageHeader, Popover, TagChip, timeAgo, type TagColor } from '@project-graphite/ui';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { bytes, get } from '../api';
 import { Rail, WithRail } from '../components/Rail';
 import { Segmented } from '../components/Segmented';
+import { Switch } from '../components/Switch';
 import { formatTime } from '../logs';
 import { usePoll } from '../usePoll';
 
@@ -36,6 +37,7 @@ interface Filters {
 
 const windows = ['15m', '1h', '6h', '24h', '7d'] as const;
 const levelColors: Record<StoredLine['level'], TagColor> = { error: 'red', warning: 'yellow', info: 'blue', debug: 'gray' };
+const levelBars: Record<StoredLine['level'], string> = { error: '#e5736b', warning: '#d7b24a', info: '#6a9eea', debug: '#8b8b95' };
 const empty: Filters = { containers: [], levels: [], streams: [], since: '24h' };
 const flip = (list: string[], value: string) => (list.includes(value) ? list.filter((entry) => entry !== value) : [...list, value]);
 
@@ -50,7 +52,7 @@ function FilterMenu({ filters, sources, onChange }: { filters: Filters; sources:
       trigger={
         <span className="flex items-center gap-1">
           <Icon name="filter" size={14} />
-          {count ? `Filters · ${count}` : 'Filters'}
+          {count ? `Filters Ã‚Â· ${count}` : 'Filters'}
         </span>
       }
       triggerLabel="Filters"
@@ -76,7 +78,7 @@ function FilterMenu({ filters, sources, onChange }: { filters: Filters; sources:
                     </button>
                     <Checkbox
                       checked={chosen.length === containers.length}
-                      label={`${project}${chosen.length && chosen.length < containers.length ? ` · ${chosen.length} of ${containers.length}` : ''}`}
+                      label={`${project}${chosen.length && chosen.length < containers.length ? ` Ã‚Â· ${chosen.length} of ${containers.length}` : ''}`}
                       onChange={() =>
                         onChange({
                           ...filters,
@@ -199,11 +201,11 @@ export function LogBrowser() {
         rail={
           <Rail
             stats={[
-              { label: 'Stored lines', value: info ? info.lines.toLocaleString() : '—' },
-              { label: 'Errors', value: info ? info.errors.toLocaleString() : '—', pill: info?.errors ? 'red' : 'green' },
-              { label: 'Sources', value: info ? info.sources.length : '—' },
-              { label: 'Oldest line', value: info?.oldest ? timeAgo(new Date(info.oldest).toISOString()) : '—' },
-              { label: 'Stored', value: info ? bytes(info.bytes) : '—', detail: info && `kept ${info.keepDays} days` },
+              { label: 'Stored lines', value: info ? info.lines.toLocaleString() : 'Ã¢â‚¬â€' },
+              { label: 'Errors', value: info ? info.errors.toLocaleString() : 'Ã¢â‚¬â€', pill: info?.errors ? 'red' : 'green' },
+              { label: 'Sources', value: info ? info.sources.length : 'Ã¢â‚¬â€' },
+              { label: 'Oldest line', value: info?.oldest ? timeAgo(new Date(info.oldest).toISOString()) : 'Ã¢â‚¬â€' },
+              { label: 'Stored', value: info ? bytes(info.bytes) : 'Ã¢â‚¬â€', detail: info && `kept ${info.keepDays} days` },
               { label: 'Live tail', value: live ? 'on' : 'off', pill: live ? 'green' : 'gray' },
             ]}
             title="Store"
@@ -215,7 +217,7 @@ export function LogBrowser() {
             <FilterMenu filters={filters} onChange={setFilters} sources={info?.sources ?? []} />
             <MuiTextField className="w-72" label="Search" onChange={(event) => setText(event.target.value)} size="small" type="search" value={text} />
             <span className="ml-auto">
-              <Toggle checked={live} label="Live" onChange={setLive} />
+              <Switch checked={live} label="Live" onChange={setLive} />
             </span>
           </div>
           <div className="flex flex-wrap gap-1">
@@ -231,38 +233,21 @@ export function LogBrowser() {
             ))}
           </div>
           {error && <p className="mono-sm text-[#e5736b]">{error}</p>}
-          <div className="overflow-x-auto">
-            <table className="data-table min-w-180 table-fixed">
-              <colgroup>
-                <col className="w-44" />
-                <col className="w-48" />
-                <col className="w-24" />
-                <col />
-              </colgroup>
-              <thead>
-                <tr>
-                  <th>time</th>
-                  <th>source</th>
-                  <th>level</th>
-                  <th>message</th>
-                </tr>
-              </thead>
-              <tbody>
-                {lines.map((line) => (
-                  <tr key={line.id}>
-                    <td className="mono-sm whitespace-nowrap align-top text-faint">{formatTime(line.time)}</td>
-                    <td className="mono-sm truncate align-top text-muted" title={line.container}>
-                      {line.project}/{line.service}
-                    </td>
-                    <td className="align-top">
-                      <TagChip color={levelColors[line.level]} label={line.level} />
-                    </td>
-                    <td className={`mono-sm break-all whitespace-pre-wrap ${line.stream === 'stderr' ? 'text-[#e5736b]' : ''}`}>{line.text}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <ol aria-label="Log lines" className="divide-y divide-line-soft">
+            {lines.map((line) => (
+              <li className="border-l-2 py-1.5 pl-3" key={line.id} style={{ borderLeftColor: levelBars[line.level] }}>
+                <p className="mono-sm flex flex-wrap gap-x-2 text-faint">
+                  <time dateTime={line.time}>{formatTime(line.time)}</time>
+                  <span className="text-muted" title={line.container}>
+                    {line.project}/{line.service}
+                  </span>
+                  {line.level !== 'info' && <span style={{ color: levelBars[line.level] }}>{line.level}</span>}
+                  {line.stream === 'stderr' && <span>stderr</span>}
+                </p>
+                <p className="mono-sm break-all whitespace-pre-wrap text-ink">{line.text}</p>
+              </li>
+            ))}
+          </ol>
           {lines.length === 0 && !error && <p className="mono-sm text-faint">No line matches.</p>}
           {more && (
             <div className="flex justify-center">
