@@ -1,9 +1,9 @@
 import IconButton from '@mui/material/IconButton';
 import MuiLink from '@mui/material/Link';
 import MuiTextField from '@mui/material/TextField';
-import { EmptyState, ErrorState, Meter, PageHeader, TagChip } from '@project-graphite/ui';
+import { EmptyState, ErrorState, Meter, PageHeader, TagChip, timeAgo } from '@project-graphite/ui';
 import { useState } from 'react';
-import { bytes, completed, percent, type AlertsData, type Host, type Overview as OverviewData, type Project } from '../api';
+import { bytes, completed, percent, stampDate, type AlertsData, type Host, type Overview as OverviewData, type Project } from '../api';
 import { Metrics } from '../components/Metrics';
 import { load, save } from '../stored';
 import { usePoll } from '../usePoll';
@@ -150,6 +150,14 @@ export function Overview() {
         </a>
       )}
       {data?.host && <HostCards host={data.host} />}
+      {data && (
+        <p className="mono-sm text-muted">
+          Backups:{' '}
+          {data.backups.latest
+            ? `last run ${timeAgo(stampDate(data.backups.latest).toISOString())}, ${data.backups.verified} of ${data.backups.projects} projects verified`
+            : 'none has run yet'}
+        </p>
+      )}
       {data?.host && <Metrics cpuMax={100} memoryMax={data.host.memory.total} query="target=host&breakdown=projects" />}
       {data?.host && data.docker && <Storage docker={data.docker} host={data.host} />}
       {data && data.projects.length === 0 && <EmptyState title="No projects to show">Nothing runs on the VPS yet.</EmptyState>}

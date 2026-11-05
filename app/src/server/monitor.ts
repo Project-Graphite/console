@@ -1,6 +1,5 @@
-import { readdir, stat } from 'node:fs/promises';
-import path from 'node:path';
 import type { Alert, Alerts, Condition } from './alerts.ts';
+import { backupConditions } from './backups.ts';
 import { config } from './config.ts';
 import { docker } from './docker.ts';
 import { snapshot, type ContainerView } from './inventory.ts';
@@ -12,7 +11,6 @@ interface Inspect {
 
 type Host = Awaited<ReturnType<typeof snapshot>>['host'];
 
-const hour = 3600_000;
 const restarts = new Map<string, { at: number; count: number }[]>();
 
 export function completed(container: ContainerView) {
@@ -59,25 +57,6 @@ export function containerConditions(views: ContainerView[], inspects: Map<string
   return found;
 }
 
-export async function backupConditions(views: ContainerView[], now: number, root = config.hostRoot): Promise<Condition[]> {
-  const found: Condition[] = [];
-  for (const container of views.filter((candidate) => candidate.service === 'backup' && candidate.state === 'running')) {
-    const folder = path.join(root, 'var/lib/docker/volumes', `${container.project}_backups`, '_data');
-    const names = await readdir(folder).catch(() => [] as string[]);
-    const dumps = await Promise.all(names.filter((name) => name.endsWith('.dump')).map(async (name) => (await stat(path.join(folder, name))).mtimeMs));
-    const newest = Math.max(0, ...dumps);
-    const late = newest ? now - newest > 26 * hour : now - container.created > hour;
-    if (late) {
-      found.push({
-        key: `backup:${container.project}`,
-        title: `${container.project} has no recent backup`,
-        detail: newest ? `The newest dump is ${Math.round((now - newest) / hour)} hours old.` : 'There is no dump in its backups volume.',
-      });
-    }
-  }
-  return found;
-}
-
 async function conditions(now: number) {
   const { host, views } = await snapshot();
   const inspects = new Map(
@@ -87,7 +66,7 @@ async function conditions(now: number) {
         .map(async (container) => [container.id, await docker<Inspect>('GET', `/containers/${container.id}/json`)] as const),
     ),
   );
-  return [...hostConditions(host), ...containerConditions(views, inspects, now), ...(await backupConditions(views, now))];
+  return [...hostConditions(host), ...containerConditions(views, inspects, now), ...(await backupConditions(now))];
 }
 
 async function github(method: string, route: string, body: unknown) {

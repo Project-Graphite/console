@@ -5,6 +5,7 @@ import { WebSocketServer } from 'ws';
 import { Access, permits, scopePattern } from './access.ts';
 import { Alerts } from './alerts.ts';
 import { authenticate, callback, githubToken, login, logout, organisationMembers, roleNow, sessionMs, type Role, type User } from './auth.ts';
+import { download, listBackups, order, requests, upload } from './backups.ts';
 import { config } from './config.ts';
 import { docker } from './docker.ts';
 import { docs } from './docs.ts';
@@ -239,6 +240,17 @@ async function api(user: User, request: http.IncomingMessage, url: URL) {
   if (url.pathname.startsWith('/api/secrets')) {
     return secretsApi(user, request, route);
   }
+  if (route === 'GET /api/backups') {
+    if (!user.owner) {
+      throw new Refusal(403, 'Only organisation owners can do that.');
+    }
+    return { projects: await listBackups(), requests: await requests() };
+  }
+  const backup = /^POST \/api\/backups\/([a-z0-9][a-z0-9_-]*)\/(?:run|(\d{8}T\d{6}Z)\/restore)$/.exec(route);
+  if (backup) {
+    await requireOwnerNow(request);
+    return { id: backup[2] ? await order('restore', backup[1], user.login, `${backup[2]}.tar`) : await order('run', backup[1], user.login) };
+  }
   if (route === 'GET /api/me') {
     access.seen(user.login);
     return { ...user, grants: user.owner ? ['*'] : access.scopes(user.login), ssh: user.owner ? config.sshTarget : null };
@@ -250,8 +262,10 @@ async function api(user: User, request: http.IncomingMessage, url: URL) {
     return docs();
   }
   if (route === 'GET /api/overview') {
-    const [{ host }, usage, list] = await Promise.all([snapshot(), diskUsage(), allProjects()]);
+    const [{ host }, usage, list, backups] = await Promise.all([snapshot(), diskUsage(), allProjects(), listBackups()]);
+    const latest = backups.flatMap(({ archives }) => archives.filter((archive) => !archive.imported).slice(0, 1));
     return {
+      backups: { projects: latest.length, verified: latest.filter((archive) => archive.ok).length, latest: latest.map((archive) => archive.stamp).sort().at(-1) ?? null },
       host,
       docker: {
         images: usage.images,
@@ -398,13 +412,24 @@ async function handle(request: http.IncomingMessage, response: http.ServerRespon
     await requireNow(request, user, `project:${container.project}`);
     return open(request, response, target, url.search);
   }
-  const download = /^\/api\/containers\/([0-9a-f]{12,64})\/logs$/.exec(url.pathname);
-  if (download && request.method === 'GET') {
-    return downloadLogs(response, await findContainer(download[1]));
+  const logFile = /^\/api\/containers\/([0-9a-f]{12,64})\/logs$/.exec(url.pathname);
+  if (logFile && request.method === 'GET') {
+    return downloadLogs(response, await findContainer(logFile[1]));
+  }
+  const archive = /^\/api\/backups\/([a-z0-9][a-z0-9_-]*)\/(\d{8}T\d{6}Z)\.tar$/.exec(url.pathname);
+  if (archive && request.method === 'GET') {
+    await requireOwnerNow(request);
+    return download(response, archive[1], archive[2], user.login);
   }
   if (url.pathname.startsWith('/api/')) {
     if (request.method === 'POST' && request.headers.origin && request.headers.origin !== new URL(config.appUrl).origin) {
       throw new Refusal(403, 'Cross-origin requests are refused.');
+    }
+    const importing = /^\/api\/backups\/([a-z0-9][a-z0-9_-]*)\/import$/.exec(url.pathname);
+    if (importing && request.method === 'POST') {
+      await requireOwnerNow(request);
+      response.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify(await upload(request, importing[1], user.login)));
+      return;
     }
     const result = await api(user, request, url);
     response.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify(result));

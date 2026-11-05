@@ -1,10 +1,11 @@
-import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { Alerts } from '../src/server/alerts.ts';
+import { backupConditions } from '../src/server/backups.ts';
 import type { ContainerView } from '../src/server/inventory.ts';
-import { backupConditions, containerConditions, hostConditions } from '../src/server/monitor.ts';
+import { containerConditions, hostConditions } from '../src/server/monitor.ts';
 
 const directories: string[] = [];
 
@@ -97,18 +98,19 @@ describe('rules', () => {
     expect(found.map((entry) => entry.key)).toEqual(['restarts:strata-redis-1']);
   });
 
-  it('flags a backup older than 26 hours, or none after the first hour', async () => {
+  it('flags a project whose newest backup is older than 26 hours or failed verification', async () => {
     const root = temporary();
-    const folder = path.join(root, 'var/lib/docker/volumes/strata_backups/_data');
+    const folder = path.join(root, 'strata');
     mkdirSync(folder, { recursive: true });
-    const now = Date.now();
-    const backup = [container('backup', { created: now - 2 * 3600_000 })];
-    expect((await backupConditions(backup, now, root)).map((entry) => entry.detail)).toEqual(['There is no dump in its backups volume.']);
-    const dump = path.join(folder, 'strata-1.dump');
-    writeFileSync(dump, '');
-    utimesSync(dump, new Date(now - 3600_000), new Date(now - 3600_000));
-    expect(await backupConditions(backup, now, root)).toEqual([]);
-    utimesSync(dump, new Date(now - 30 * 3600_000), new Date(now - 30 * 3600_000));
-    expect((await backupConditions(backup, now, root)).map((entry) => entry.key)).toEqual(['backup:strata']);
+    const now = Date.parse('2026-11-05T10:00:00Z');
+    const summary = (stamp: string, fields: object = {}) =>
+      writeFileSync(path.join(folder, `${stamp}.json`), JSON.stringify({ project: 'strata', stamp, started: '', ok: true, errors: [], items: [], ...fields }));
+    summary('20261105T030000Z');
+    expect(await backupConditions(now, root)).toEqual([]);
+    summary('20261105T040000Z', { ok: false, errors: ['postgres postgres: its container is not running'] });
+    expect((await backupConditions(now, root)).map((entry) => entry.detail)).toEqual(['postgres postgres: its container is not running']);
+    expect((await backupConditions(now + 30 * 3600_000, root)).map((entry) => entry.key)).toEqual(['backup:strata']);
+    summary('20261105T090000Z', { imported: true });
+    expect((await backupConditions(now, root)).map((entry) => entry.title)).toEqual(["strata's last backup failed"]);
   });
 });

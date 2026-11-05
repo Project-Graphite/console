@@ -6,6 +6,7 @@ import { can, get, Unauthorized, type AlertsData, type User } from './api';
 import { usePoll } from './usePoll';
 import { Admin } from './pages/Admin';
 import { Alerts } from './pages/Alerts';
+import { Backups } from './pages/Backups';
 import { ContainerPage } from './pages/ContainerPage';
 import { Docs } from './pages/Docs';
 import { HostShell } from './pages/HostShell';
@@ -44,6 +45,7 @@ function Page({ hash, user }: { hash: string; user: User }) {
   const secret = /^\/secrets\/([a-z0-9-]+)\/([A-Z_][A-Z0-9_]*)(?:\/(history|usage))?$/.exec(hash);
   if (secret && can(user, `secrets:${secret[1]}`)) return <SecretPage key={hash} name={secret[2]} project={secret[1]} tab={secret[3] ?? ''} user={user} />;
   if (user.owner && hash === '/secrets') return <Secrets user={user} />;
+  if (user.owner && hash === '/backups') return <Backups />;
   if (hash === '/images') return <Images user={user} />;
   if (hash === '/volumes') return <Volumes />;
   if (hash === '/alerts') return <Alerts />;
@@ -67,7 +69,7 @@ export function App() {
   }, []);
 
   const pages: ShellTab[] = [
-    { href: '#/', label: 'Overview', icon: 'home', active: !/^\/(images|volumes|alerts|shell|admin|docs|secrets)/.test(hash) },
+    { href: '#/', label: 'Overview', icon: 'home', active: !/^\/(images|volumes|alerts|shell|admin|docs|secrets|backups)/.test(hash) },
     { href: '#/alerts', label: alerts ? `Alerts · ${alerts}` : 'Alerts', icon: 'bell', active: hash === '/alerts' },
     { href: '#/images', label: 'Images', icon: 'library', active: hash === '/images' },
     { href: '#/volumes', label: 'Volumes', icon: 'folder', active: hash === '/volumes' },
@@ -75,6 +77,7 @@ export function App() {
     ...(user?.owner
       ? ([
           { href: '#/secrets', label: 'Secrets', icon: 'lock', active: hash.startsWith('/secrets') },
+          { href: '#/backups', label: 'Backups', icon: 'download', active: hash === '/backups' },
           { href: '#/admin', label: 'Admin', icon: 'key', active: hash === '/admin' },
         ] satisfies ShellTab[])
       : []),
