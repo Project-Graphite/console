@@ -1,5 +1,5 @@
 import { createReadStream } from 'node:fs';
-import { lstat, readdir, realpath, stat } from 'node:fs/promises';
+import { lstat, readdir, stat } from 'node:fs/promises';
 import type { ServerResponse } from 'node:http';
 import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
@@ -17,14 +17,23 @@ function check(name: string) {
 
 export async function inside(name: string, relative: string, volumes = path.join(config.hostRoot, 'var/lib/docker/volumes')) {
   check(name);
-  const root = await realpath(path.join(volumes, name, '_data')).catch(() => {
+  const root = path.join(volumes, name, '_data');
+  if (!(await lstat(root).catch(() => undefined))?.isDirectory()) {
     throw new Refusal(404, `There is no volume ${name}.`);
-  });
-  const target = await realpath(path.join(root, relative)).catch(() => {
-    throw new Refusal(404, `There is no ${relative} in ${name}.`);
-  });
+  }
+  const target = path.resolve(root, relative);
   if (target !== root && !target.startsWith(root + path.sep)) {
     throw new Refusal(403, 'That path leads out of the volume.');
+  }
+  let current = root;
+  for (const part of path.relative(root, target).split(path.sep).filter(Boolean)) {
+    current = path.join(current, part);
+    const info = await lstat(current).catch(() => {
+      throw new Refusal(404, `There is no ${relative} in ${name}.`);
+    });
+    if (info.isSymbolicLink()) {
+      throw new Refusal(403, 'That path leads out of the volume.');
+    }
   }
   return target;
 }

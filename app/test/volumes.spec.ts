@@ -33,6 +33,18 @@ describe('volumes', () => {
     expect((await listFiles('strata_files-data', 'uploads', base)).map((entry) => [entry.name, entry.size])).toEqual([['a.png', 3]]);
   });
 
+  it('resolves inside a volume reached through a linked root, as /proc/1/root is', async () => {
+    const base = volumes();
+    const linked = `${base}-linked`;
+    directories.push(linked);
+    try {
+      symlinkSync(base, linked, 'junction');
+    } catch {
+      return;
+    }
+    expect((await listFiles('strata_files-data', 'uploads', linked)).map((entry) => entry.name)).toEqual(['a.png']);
+  });
+
   it('refuses paths and links that lead out of the volume, and names that are not volumes', async () => {
     const base = volumes();
     await expect(inside('strata_files-data', '../../secret.txt', base)).rejects.toThrow('leads out of the volume');
