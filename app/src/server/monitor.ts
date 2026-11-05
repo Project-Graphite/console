@@ -3,6 +3,7 @@ import { defaultRules, type Alert, type Alerts, type Condition, type Rule, type 
 import { backupConditions } from './backups.ts';
 import { config } from './config.ts';
 import { docker } from './docker.ts';
+import { checkHub, hubRunning } from './hub.ts';
 import { snapshot, type ContainerView } from './inventory.ts';
 import { latest, type Frame, type HostLive } from './live.ts';
 import { Refusal } from './refusal.ts';
@@ -109,6 +110,7 @@ async function conditions(rules: Rules, now: number) {
     ...containerConditions(views, inspects, now, rules),
     ...usageConditions(frame, rules),
     ...(rules['backup-late'].enabled ? await backupConditions(now, undefined, rules['backup-late'].threshold) : []),
+    ...(hubRunning(views) ? await checkHub(rules) : []),
   ];
 }
 

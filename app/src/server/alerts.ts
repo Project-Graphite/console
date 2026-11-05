@@ -27,6 +27,8 @@ export const ruleKinds = {
   'container-unhealthy': { label: 'A container unhealthy', unit: null, threshold: 0, minutes: 1 },
   'container-restarts': { label: 'A container restarted in 10 minutes, times', unit: 'restarts', threshold: 3, minutes: 0 },
   'backup-late': { label: 'A project without a backup for', unit: 'hours', threshold: 26, minutes: 0 },
+  'hub-errors': { label: 'Hub requests failing over five minutes above', unit: '%', threshold: 1, minutes: 0 },
+  'hub-ready': { label: 'Hub readiness failing, checks in a row', unit: 'checks', threshold: 2, minutes: 0 },
 } as const;
 
 export type RuleKind = keyof typeof ruleKinds;

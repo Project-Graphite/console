@@ -33,6 +33,7 @@ export const config = {
   self: process.env.HOSTNAME ?? '',
   sshTarget: process.env.SSH_TARGET ?? 'ubuntu@localhost',
   secretsKey: process.env.SECRETS_KEY || undefined,
+  deployReportSecret: process.env.DEPLOY_REPORT_SECRET || undefined,
   graphiteHome: process.env.GRAPHITE_HOME ?? '/srv/graphite',
   platformRepo: process.env.PLATFORM_REPO ?? 'project-graphite/platform',
   platformApp:
