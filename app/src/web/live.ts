@@ -53,6 +53,27 @@ export function containerPoint(frame: Frame, name: string): Point | undefined {
   );
 }
 
+export function projectSeries(frames: Frame[]) {
+  const series = new Map<string, Point[]>();
+  for (const frame of frames) {
+    const totals = new Map<string, Point>();
+    for (const container of Object.values(frame.containers)) {
+      const total = totals.get(container.project) ?? { at: frame.at, cpu: 0, cpuPeak: 0, memory: 0, memoryPeak: 0, net: 0, io: 0 };
+      total.cpu += container.cpu / frame.host.cpus;
+      total.cpuPeak = total.cpu;
+      total.memory += container.memory;
+      total.memoryPeak = total.memory;
+      total.net += container.rx + container.tx;
+      total.io += container.read + container.write;
+      totals.set(container.project, total);
+    }
+    for (const [project, point] of totals) {
+      series.set(project, [...(series.get(project) ?? []), point]);
+    }
+  }
+  return [...series].map(([name, points]) => ({ name, points }));
+}
+
 export function projectTotals(frame: Frame | undefined) {
   const totals = new Map<string, { cpu: number; memory: number }>();
   for (const container of Object.values(frame?.containers ?? {})) {

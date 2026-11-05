@@ -1,9 +1,10 @@
 import IconButton from '@mui/material/IconButton';
 import MuiLink from '@mui/material/Link';
 import MuiTextField from '@mui/material/TextField';
+import Tooltip from '@mui/material/Tooltip';
 import { EmptyState, ErrorState, Meter, PageHeader, TagChip, timeAgo } from '@project-graphite/ui';
 import { useState } from 'react';
-import { bytes, completed, percent, rate, stampDate, type AlertsData, type Host, type Overview as OverviewData, type Project, type Traffic } from '../api';
+import { bytes, completed, describeChange, percent, rate, stampDate, type AlertsData, type Host, type Overview as OverviewData, type Project, type Traffic } from '../api';
 import { Metrics } from '../components/Metrics';
 import { projectTotals, useLive } from '../live';
 import { load, save } from '../stored';
@@ -126,7 +127,13 @@ function ProjectList({ projects, live }: { projects: OverviewData['projects']; l
                 <td className="whitespace-nowrap">
                   <span className="flex items-center gap-1">
                     {status(project)}
-                    {project.needsRedeploy && <TagChip color="red" href={`#/project/${project.slug}`} label="needs redeploy" />}
+                    {project.redeploy.length > 0 && (
+                      <Tooltip title={<span className="whitespace-pre-line">{project.redeploy.map(describeChange).join('\n')}</span>}>
+                        <span>
+                          <TagChip color="red" href={`#/project/${project.slug}`} label="needs redeploy" />
+                        </span>
+                      </Tooltip>
+                    )}
                   </span>
                 </td>
                 <td className="mono-sm whitespace-nowrap">{percent(live.get(project.slug)?.cpu ?? project.cpu)}</td>

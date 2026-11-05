@@ -139,6 +139,23 @@ describe('SecretStore', () => {
     ]);
   });
 
+  it('lists what changed after a rollout, each secret once, ignoring description edits', () => {
+    const paths = setup();
+    const store = open(paths, key());
+    store.create('strata', { name: 'OLD', value: 'before' }, 'amr', 100);
+    store.create('strata', { name: 'NEW', value: 'x' }, 'omar', 200);
+    store.update('strata', 'OLD', { value: 'after' }, 'amr', 300);
+    store.update('strata', 'OLD', { description: 'only words' }, 'amr', 400);
+    store.create('strata', { name: 'GONE', value: 'x' }, 'amr', 500);
+    store.remove('strata', ['GONE'], 'amr', 600);
+    expect(store.changesSince('strata', 150).map(({ name, action, login, at }) => [name, action, login, at])).toEqual([
+      ['NEW', 'create', 'omar', 200],
+      ['OLD', 'update', 'amr', 300],
+      ['GONE', 'delete', 'amr', 600],
+    ]);
+    expect(store.changesSince('strata', 600)).toEqual([]);
+  });
+
   it('reconciles a hand-edited env file into the store on start', () => {
     const paths = setup();
     const secret = key();

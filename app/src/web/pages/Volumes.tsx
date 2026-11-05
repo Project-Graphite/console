@@ -189,14 +189,14 @@ export function Volumes({ owner }: { owner: boolean }) {
                     <td>
                       {owner && (
                         <span className="flex items-center justify-end gap-2">
-                          <Button onClick={() => setBrowsing(volume.name)} size="small">
-                            Browse
-                          </Button>
                           {!volume.inUse && (
                             <Button icon="trash" onClick={() => setRemoving(volume)} size="small" variant="danger">
                               Delete
                             </Button>
                           )}
+                          <Button onClick={() => setBrowsing(volume.name)} size="small">
+                            Browse
+                          </Button>
                         </span>
                       )}
                     </td>

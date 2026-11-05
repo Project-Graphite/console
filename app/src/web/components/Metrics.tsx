@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { bytes, percent, rate, ranges, type HistoryData, type Metric, type Series } from '../api';
-import { containerPoint, hostPoint, liveSeconds, useLive } from '../live';
+import { containerPoint, hostPoint, liveSeconds, projectSeries, useLive } from '../live';
 import { load, save } from '../stored';
 import { usePoll } from '../usePoll';
 import { Chart } from './Chart';
@@ -26,7 +26,7 @@ export function Metrics({ query, live, cpuMax, memoryMax }: { query: string; liv
       : live.map(({ name, label }) => ({ name: label, points: frames.flatMap((frame) => containerPoint(frame, name) ?? []) }));
   const chart =
     range === 'live'
-      ? { series: liveSeries, span: liveSeconds * 1000, step: 1000, now: frames.at(-1)?.at ?? Date.now() }
+      ? { series: liveSeries, breakdown: live === 'host' ? projectSeries(frames) : undefined, span: liveSeconds * 1000, step: 1000, now: frames.at(-1)?.at ?? Date.now() }
       : data && { series: data.series, breakdown: data.breakdown, span: data.span, step: data.step, now: Date.now() };
   const peak = (metric: Metric): Metric => (peaks && range !== 'live' ? (metric === 'cpu' ? 'cpuPeak' : 'memoryPeak') : metric);
 

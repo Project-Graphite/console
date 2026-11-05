@@ -343,6 +343,13 @@ export class SecretStore {
     };
   }
 
+  changesSince(project: string, since: number) {
+    const rows = this.db
+      .prepare("SELECT name, action, login, at FROM secret_audit WHERE project = ? AND at > ? AND name IS NOT NULL AND action IN ('create', 'update', 'restore', 'delete', 'reconcile') ORDER BY id")
+      .all(project, since) as { name: string; action: string; login: string; at: number }[];
+    return [...new Map(rows.map((row) => [row.name, row])).values()];
+  }
+
   changedAt(project: string) {
     return statSync(path.join(this.hostDirectory, `${project}.env`), { throwIfNoEntry: false })?.mtimeMs ?? null;
   }
@@ -402,10 +409,11 @@ export class SecretStore {
       this.db
         .prepare('UPDATE secrets SET description = ?, type = ?, updated_by = ?, updated_at = ? WHERE project = ? AND name = ?')
         .run(description, type, login, at, project, name);
-      if (text !== undefined && text !== this.value(project, name)) {
+      const changed = text !== undefined && text !== this.value(project, name);
+      if (changed) {
         this.addVersion(project, name, text, login, at);
       }
-      this.audit(login, 'update', project, name, at);
+      this.audit(login, changed ? 'update' : 'describe', project, name, at);
     });
   }
 

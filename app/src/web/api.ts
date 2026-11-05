@@ -55,6 +55,7 @@ export interface Volume {
 export interface ProjectDetail extends Project {
   images: { id: string; name: string; size: number | null; usedBy: string[] }[];
   volumes: Volume[];
+  redeploy: RedeployReason[];
 }
 
 export interface Usage {
@@ -72,10 +73,31 @@ export interface Host {
   swap: Usage;
 }
 
+export interface RedeployReason {
+  name: string;
+  action: string;
+  login: string;
+  at: number;
+}
+
+const changeWords: Record<string, string> = { create: 'added', update: 'changed', restore: 'restored', delete: 'removed', reconcile: 'edited on the host' };
+
+export function describeChange(reason: RedeployReason) {
+  const minutes = Math.max(1, Math.round((Date.now() - reason.at) / 60_000));
+  const ago = minutes < 60 ? `${minutes} min ago` : minutes < 2880 ? `${Math.round(minutes / 60)} h ago` : `${Math.round(minutes / 1440)} days ago`;
+  return `${reason.name} ${changeWords[reason.action] ?? reason.action}${reason.login === 'host' ? '' : ` by ${reason.login}`}, ${ago}`;
+}
+
+export interface Release {
+  current: string | null;
+  enabled: boolean;
+  history: { tag: string; at: string; by: string }[];
+}
+
 export interface Overview {
   host: Host | null;
   docker: { images: number; containers: number; buildCache: number; volumes: number } | null;
-  projects: (Project & { needsRedeploy: boolean })[];
+  projects: (Project & { redeploy: RedeployReason[] })[];
   backups: { projects: number; verified: number; latest: string | null };
 }
 

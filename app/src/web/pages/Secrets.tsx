@@ -187,7 +187,7 @@ function SecretSheet({ prefix, secret, onClose, onSaved }: { prefix: string; sec
   );
 }
 
-export function SecretList({ project }: { project?: string }) {
+export function SecretList({ project, framed = true }: { project?: string; framed?: boolean }) {
   const { data, error, reload } = usePoll<{ projects?: SecretProject[]; project?: SecretProject; secrets: Secret[] }>(
     project ? `/api/secrets/${project}` : '/api/secrets',
     30_000,
@@ -230,7 +230,7 @@ export function SecretList({ project }: { project?: string }) {
   };
 
   return (
-    <section className="stat-card space-y-3">
+    <section className={framed ? 'stat-card space-y-3' : 'space-y-3 p-4'}>
       <div className="flex flex-wrap items-center gap-2">
         <SecretFilters filters={filters} onChange={setFilters} projects={project ? [] : all.map((entry) => entry.project)} />
         {message && <span className="mono-sm text-muted">{message}</span>}
