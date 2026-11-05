@@ -7,7 +7,7 @@ export function Images({ user }: { user: User }) {
   const images = usePoll<Image[]>('/api/images', 30_000);
   const disk = usePoll<Disk>('/api/disk', 30_000);
   const [pruning, setPruning] = useState(false);
-  const [reclaimed, setReclaimed] = useState<number>();
+  const [result, setResult] = useState<{ reclaimed: number; removed: number }>();
 
   if (images.error && !images.data) {
     return <ErrorState title="The console could not list images">{images.error.message}</ErrorState>;
@@ -19,7 +19,7 @@ export function Images({ user }: { user: User }) {
       <PageHeader
         actions={
           can(user, 'area:images') && (
-            <Button onClick={() => setPruning(true)}>Remove dangling images</Button>
+            <Button onClick={() => setPruning(true)}>Remove unused images</Button>
           )
         }
         title="Images"
@@ -27,7 +27,7 @@ export function Images({ user }: { user: User }) {
         {disk.data && (
           <span className="mono-sm text-muted">
             images {bytes(disk.data.images)} · containers {bytes(disk.data.containers)} · build cache {bytes(disk.data.buildCache)}
-            {reclaimed !== undefined && ` · reclaimed ${bytes(reclaimed)}`}
+            {result && ` · removed ${result.removed} images, reclaimed ${bytes(result.reclaimed)}`}
           </span>
         )}
       </PageHeader>
@@ -59,13 +59,12 @@ export function Images({ user }: { user: User }) {
           confirmLabel="Remove"
           onClose={() => setPruning(false)}
           onConfirm={async () => {
-            const result = await post<{ reclaimed: number }>('/api/prune');
-            setReclaimed(result.reclaimed);
-            await images.reload();
+            setResult(await post<{ reclaimed: number; removed: number }>('/api/prune'));
+            await Promise.all([images.reload(), disk.reload()]);
           }}
-          title="Remove dangling images?"
+          title={`Remove ${unused.length} unused images?`}
         >
-          Removes untagged image layers no container uses. Tagged images stay.
+          Removes every image no container uses, running or stopped, older builds included. A project pulls its image again when it next deploys.
         </ConfirmDialog>
       )}
     </div>

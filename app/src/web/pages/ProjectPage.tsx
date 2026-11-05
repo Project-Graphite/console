@@ -3,6 +3,7 @@ import { Button, ErrorState, PageHeader, TagChip } from '@project-graphite/ui';
 import { useState } from 'react';
 import { bytes, can, percent, post, shortImage, stateColor, stateOf, type ProjectDetail, type User } from '../api';
 import { Logs } from '../components/Logs';
+import { Redeploy } from '../components/Redeploy';
 import { Metrics } from '../components/Metrics';
 import { usePoll } from '../usePoll';
 import { SecretList } from './Secrets';
@@ -39,7 +40,14 @@ export function ProjectPage({ slug, user }: { slug: string; user: User }) {
   return (
     <div className="space-y-6">
       <PageHeader
-        actions={can(user, `project:${slug}`) && project.sleeps && <Wake onWoken={() => void reload()} slug={slug} />}
+        actions={
+          can(user, `project:${slug}`) && (
+            <span className="flex flex-wrap items-start gap-2">
+              <Redeploy onDone={() => void reload()} project={slug} />
+              {project.sleeps && <Wake onWoken={() => void reload()} slug={slug} />}
+            </span>
+          )
+        }
         eyebrow={<MuiLink href="#/" underline="always">Overview</MuiLink>}
         title={slug}
       >

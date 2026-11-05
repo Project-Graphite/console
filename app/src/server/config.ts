@@ -29,6 +29,5 @@ export const config = {
   sshTarget: process.env.SSH_TARGET ?? 'ubuntu@localhost',
   secretsKey: process.env.SECRETS_KEY || undefined,
   graphiteHome: process.env.GRAPHITE_HOME ?? '/srv/graphite',
-  agentUrl: process.env.AGENT_URL ?? 'http://172.17.0.1:9000',
   webRoot: new URL('../web/', import.meta.url),
 };
