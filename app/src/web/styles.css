@@ -7,6 +7,21 @@
   width: min(100% - 3rem, 120rem);
 }
 
+@layer base {
+  html,
+  .overflow-auto,
+  .overflow-y-auto,
+  .overflow-scroll,
+  .overflow-y-scroll,
+  .log-frame {
+    scrollbar-gutter: stable;
+  }
+
+  body {
+    padding-right: 0 !important;
+  }
+}
+
 @layer components {
   .stat-card {
     @apply rounded-xl border border-line bg-surface p-4;
