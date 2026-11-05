@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import http from 'node:http';
+import path from 'node:path';
 import { WebSocketServer } from 'ws';
 import { Access, permits, scopePattern } from './access.ts';
 import { Alerts } from './alerts.ts';
@@ -8,23 +9,17 @@ import { config } from './config.ts';
 import { docker } from './docker.ts';
 import { docs } from './docs.ts';
 import { History, projectTotals, ranges, type Range } from './history.ts';
-import { collect, containers, diskUsage, projects, refresh, snapshot } from './inventory.ts';
+import { collect, containers, diskUsage, projects, refresh, snapshot, type ContainerView } from './inventory.ts';
 import { monitor } from './monitor.ts';
 import { open, openSocket, parseOpen } from './proxy.ts';
+import { Refusal } from './refusal.ts';
+import { appliedCompose, composeReferences, parseKeys, projectPattern, SecretStore } from './secrets.ts';
 import { downloadLogs, logs, terminal } from './terminal.ts';
-
-class Refusal extends Error {
-  constructor(
-    readonly status: number,
-    message: string,
-  ) {
-    super(message);
-  }
-}
 
 const history = new History(config.dataDir);
 const access = new Access(config.dataDir);
 const alerts = new Alerts(config.dataDir);
+const store = config.secretsKey ? new SecretStore(config.dataDir, parseKeys(config.secretsKey), path.join(config.hostRoot, 'etc/graphite')) : undefined;
 collect(history);
 monitor(alerts);
 
@@ -140,8 +135,110 @@ async function members(request: http.IncomingMessage, user: User) {
     .sort((a, b) => Number(b.owner) - Number(a.owner) || a.login.localeCompare(b.login));
 }
 
+function secretStore() {
+  if (!store) {
+    throw new Refusal(503, "The secret store needs SECRETS_KEY in the console's env file.");
+  }
+  return store;
+}
+
+function needsRedeploy(project: string, views: ContainerView[]) {
+  const changed = store?.changedAt(project) ?? null;
+  const created = views.filter((view) => view.project === project).map((view) => view.created);
+  return changed !== null && created.length > 0 && changed > Math.max(...created);
+}
+
+async function secretProject(project: string, views: ContainerView[]) {
+  const stored = new Set(secretStore().list(project).map((secret) => secret.name));
+  return {
+    project,
+    needsRedeploy: needsRedeploy(project, views),
+    missing: [...composeReferences(await appliedCompose(project))].filter(([name, reference]) => reference.required && !stored.has(name)).map(([name]) => name),
+  };
+}
+
+async function secretsApi(user: User, request: http.IncomingMessage, route: string) {
+  const secrets = secretStore();
+  if (route === 'GET /api/secrets') {
+    await requireOwnerNow(request);
+    const views = await containers();
+    const slugs = new Set([...secrets.projects(), ...views.map((view) => view.project)].filter((slug) => projectPattern.test(slug) && slug !== 'console' && slug !== 'other'));
+    return { projects: await Promise.all([...slugs].sort().map((slug) => secretProject(slug, views))), secrets: secrets.list() };
+  }
+  const match = /^(GET|POST) \/api\/secrets\/([a-z0-9-]+)(?:\/([A-Z_][A-Z0-9_]*|import|delete|redeploy))?(?:\/(reveal|restore))?$/.exec(route);
+  if (!match) {
+    throw new Refusal(404, 'Not found.');
+  }
+  const [, method, project, target, action] = match;
+  await requireNow(request, user, `secrets:${project}`);
+  if (method === 'GET' && !target) {
+    return { project: await secretProject(project, await containers()), secrets: secrets.list(project) };
+  }
+  if (method === 'GET' && !action && /^[A-Z_]/.test(target)) {
+    return { ...secrets.detail(project, target), file: `${project}/compose.yaml`, usage: composeReferences(await appliedCompose(project)).get(target)?.lines ?? [] };
+  }
+  if (method !== 'POST') {
+    throw new Refusal(404, 'Not found.');
+  }
+  if (!target) {
+    secrets.create(project, await body(request), user.login);
+    return { ok: true };
+  }
+  if (target === 'import' && !action) {
+    const { text, preview } = (await body(request)) as { text?: unknown; preview?: unknown };
+    if (typeof text !== 'string') {
+      throw new Refusal(400, 'Paste the NAME=value lines to import.');
+    }
+    return { names: secrets.importText(project, text, preview === true, user.login) };
+  }
+  if (target === 'delete' && !action) {
+    const { names } = (await body(request)) as { names?: unknown };
+    if (!Array.isArray(names) || !names.every((name) => typeof name === 'string')) {
+      throw new Refusal(400, 'Name the secrets to delete.');
+    }
+    const references = composeReferences(await appliedCompose(project));
+    const required = names.filter((name: string) => references.get(name)?.required);
+    if (required.length) {
+      throw new Refusal(409, `${project}/compose.yaml still requires ${required.join(', ')}.`);
+    }
+    secrets.remove(project, names, user.login);
+    return { ok: true };
+  }
+  if (target === 'redeploy' && !action) {
+    await requireNow(request, user, `project:${project}`);
+    const response = await fetch(`${config.agentUrl}/reapply`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${secrets.value('agent', 'CONSOLE_TOKEN')}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: project, by: user.login }),
+      signal: AbortSignal.timeout(660_000),
+    });
+    if (!response.ok) {
+      throw new Refusal(502, `The agent answered ${response.status}: ${await response.text()}`);
+    }
+    secrets.audit(user.login, 'redeploy', project, null);
+    await refresh();
+    return { ok: true };
+  }
+  if (!action) {
+    secrets.update(project, target, await body(request), user.login);
+    return { ok: true };
+  }
+  if (action === 'reveal') {
+    return { value: secrets.reveal(project, target, user.login) };
+  }
+  const { version } = (await body(request)) as { version?: unknown };
+  if (!Number.isInteger(version)) {
+    throw new Refusal(400, 'Name the version to restore.');
+  }
+  secrets.restore(project, target, version as number, user.login);
+  return { ok: true };
+}
+
 async function api(user: User, request: http.IncomingMessage, url: URL) {
   const route = `${request.method} ${url.pathname}`;
+  if (url.pathname.startsWith('/api/secrets')) {
+    return secretsApi(user, request, route);
+  }
   if (route === 'GET /api/me') {
     access.seen(user.login);
     return { ...user, grants: user.owner ? ['*'] : access.scopes(user.login), ssh: user.owner ? config.sshTarget : null };
@@ -162,7 +259,7 @@ async function api(user: User, request: http.IncomingMessage, url: URL) {
         buildCache: usage.buildCache,
         volumes: usage.volumes.reduce((sum, volume) => sum + Math.max(0, volume.size), 0),
       },
-      projects: list,
+      projects: list.map((project) => ({ ...project, needsRedeploy: needsRedeploy(project.slug, project.containers) })),
     };
   }
   const project = /^GET \/api\/projects\/([a-z0-9-]+)$/.exec(route);
@@ -221,7 +318,7 @@ async function api(user: User, request: http.IncomingMessage, url: URL) {
     await requireOwnerNow(request);
     const { scopes } = (await body(request)) as { scopes?: unknown };
     if (!Array.isArray(scopes) || !scopes.every((scope) => typeof scope === 'string' && scopePattern.test(scope))) {
-      throw new Refusal(400, 'Access is a list of *, area:images, area:shell or project:<slug>.');
+      throw new Refusal(400, 'Access is a list of *, area:images, area:shell, project:<slug> or secrets:<slug>.');
     }
     access.grant(grant[1], scopes);
     closeRevoked(grant[1]);

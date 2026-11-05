@@ -67,7 +67,7 @@ function status(project: Project) {
   return <TagChip color={running === services.length ? 'green' : 'yellow'} label={`${running}/${services.length} running`} />;
 }
 
-function ProjectList({ projects }: { projects: Project[] }) {
+function ProjectList({ projects }: { projects: OverviewData['projects'] }) {
   const [filter, setFilter] = useState('');
   const [pinned, setPinned] = useState<string[]>(() => load<string[]>('console.pinned', []));
   const toggle = (slug: string) => {
@@ -115,7 +115,12 @@ function ProjectList({ projects }: { projects: Project[] }) {
                     {project.slug}
                   </MuiLink>
                 </td>
-                <td className="whitespace-nowrap">{status(project)}</td>
+                <td className="whitespace-nowrap">
+                  <span className="flex items-center gap-1">
+                    {status(project)}
+                    {project.needsRedeploy && <TagChip color="red" href={`#/project/${project.slug}`} label="needs redeploy" />}
+                  </span>
+                </td>
                 <td className="mono-sm whitespace-nowrap">{percent(project.cpu)}</td>
                 <td className="mono-sm whitespace-nowrap">{bytes(project.memory)}</td>
                 <td className="mono-sm whitespace-nowrap">{project.storage ? bytes(project.storage.volumes + project.storage.images) : '—'}</td>

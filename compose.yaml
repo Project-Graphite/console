@@ -7,6 +7,7 @@ services:
       NODE_ENV: development
       APP_URL: http://localhost:3000
       SESSION_SECRET: local-session-secret
+      SECRETS_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
       DEV_LOGIN: ${DEV_LOGIN:-local-owner}
       DEV_ROLE: ${DEV_ROLE:-owner}
       SABLIER_URL: http://sablier:10000

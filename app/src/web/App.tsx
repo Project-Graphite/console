@@ -12,6 +12,7 @@ import { HostShell } from './pages/HostShell';
 import { Images } from './pages/Images';
 import { Overview } from './pages/Overview';
 import { ProjectPage } from './pages/ProjectPage';
+import { SecretPage, Secrets } from './pages/Secrets';
 import { Volumes } from './pages/Volumes';
 
 function useHash() {
@@ -40,6 +41,9 @@ function Page({ hash, user }: { hash: string; user: User }) {
   if (project) return <ProjectPage key={project[1]} slug={project[1]} user={user} />;
   const docs = /^\/docs(?:\/(.+))?$/.exec(hash);
   if (docs) return <Docs path={docs[1] ?? ''} />;
+  const secret = /^\/secrets\/([a-z0-9-]+)\/([A-Z_][A-Z0-9_]*)(?:\/(history|usage))?$/.exec(hash);
+  if (secret && can(user, `secrets:${secret[1]}`)) return <SecretPage key={hash} name={secret[2]} project={secret[1]} tab={secret[3] ?? ''} user={user} />;
+  if (user.owner && hash === '/secrets') return <Secrets user={user} />;
   if (hash === '/images') return <Images user={user} />;
   if (hash === '/volumes') return <Volumes />;
   if (hash === '/alerts') return <Alerts />;
@@ -63,12 +67,17 @@ export function App() {
   }, []);
 
   const pages: ShellTab[] = [
-    { href: '#/', label: 'Overview', icon: 'home', active: !/^\/(images|volumes|alerts|shell|admin|docs)/.test(hash) },
+    { href: '#/', label: 'Overview', icon: 'home', active: !/^\/(images|volumes|alerts|shell|admin|docs|secrets)/.test(hash) },
     { href: '#/alerts', label: alerts ? `Alerts · ${alerts}` : 'Alerts', icon: 'bell', active: hash === '/alerts' },
     { href: '#/images', label: 'Images', icon: 'library', active: hash === '/images' },
     { href: '#/volumes', label: 'Volumes', icon: 'folder', active: hash === '/volumes' },
     ...(user && can(user, 'area:shell') ? ([{ href: '#/shell', label: 'Shell', icon: 'monitor', active: hash === '/shell' }] satisfies ShellTab[]) : []),
-    ...(user?.owner ? ([{ href: '#/admin', label: 'Admin', icon: 'key', active: hash === '/admin' }] satisfies ShellTab[]) : []),
+    ...(user?.owner
+      ? ([
+          { href: '#/secrets', label: 'Secrets', icon: 'lock', active: hash.startsWith('/secrets') },
+          { href: '#/admin', label: 'Admin', icon: 'key', active: hash === '/admin' },
+        ] satisfies ShellTab[])
+      : []),
     { href: '#/docs', label: 'Docs', icon: 'file', active: hash.startsWith('/docs') },
   ];
   const nav: ShellNavItem[] = pages.map(({ href, label, active }) => ({ href, label, active }));

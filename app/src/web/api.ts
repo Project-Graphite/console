@@ -6,7 +6,7 @@ export interface User {
 }
 
 export function can(user: User, scope: string) {
-  return user.grants.includes('*') || user.grants.includes(scope);
+  return user.owner || user.grants.includes(scope) || (user.grants.includes('*') && !scope.startsWith('secrets:'));
 }
 
 export interface Member {
@@ -75,7 +75,32 @@ export interface Host {
 export interface Overview {
   host: Host | null;
   docker: { images: number; containers: number; buildCache: number; volumes: number } | null;
-  projects: Project[];
+  projects: (Project & { needsRedeploy: boolean })[];
+}
+
+export type SecretType = 'secure' | 'plain';
+
+export interface Secret {
+  project: string;
+  name: string;
+  description: string;
+  type: SecretType;
+  version: number;
+  updatedBy: string;
+  updatedAt: number;
+  value: string | null;
+}
+
+export interface SecretProject {
+  project: string;
+  needsRedeploy: boolean;
+  missing: string[];
+}
+
+export interface SecretDetail extends Secret {
+  history: { version: number; length: number; updatedBy: string; updatedAt: number }[];
+  file: string;
+  usage: number[];
 }
 
 export interface Point {
