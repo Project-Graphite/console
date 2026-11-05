@@ -100,8 +100,17 @@ export interface BackupRequest {
   at?: string;
 }
 
+export interface BackupSchedule {
+  enabled: boolean;
+  everyHours: number;
+  hour: number;
+  keepDays: number;
+}
+
 export interface BackupsData {
   projects: { project: string; archives: BackupSummary[] }[];
+  schedule: BackupSchedule;
+  next: number | null;
   requests: BackupRequest[];
 }
 
@@ -226,13 +235,6 @@ export interface AlertsData {
   emailing: boolean;
   repo: string;
   rules: AlertRule[];
-}
-
-export interface LogMatch {
-  container: string;
-  stream: 'stdout' | 'stderr';
-  time: string;
-  text: string;
 }
 
 export interface DocPage {

@@ -40,6 +40,45 @@ export interface BackupRequest {
   at?: string;
 }
 
+export interface Schedule {
+  enabled: boolean;
+  everyHours: number;
+  hour: number;
+  keepDays: number;
+}
+
+export const defaultSchedule: Schedule = { enabled: true, everyHours: 24, hour: 3, keepDays: 14 };
+export const periods = [1, 2, 3, 4, 6, 8, 12, 24, 48, 72, 168];
+
+export function nextRun(schedule: Schedule, now: number) {
+  const period = schedule.everyHours * 3600_000;
+  const anchor = schedule.hour * 3600_000;
+  return anchor + Math.ceil((now - anchor) / period) * period;
+}
+
+export async function readSchedule(root = backupRoot()): Promise<Schedule> {
+  return { ...defaultSchedule, ...(await json<Partial<Schedule>>(path.join(root, '.schedule.json')).catch(missing)) };
+}
+
+export async function writeSchedule(input: unknown, login: string, root = backupRoot()) {
+  const { enabled, everyHours, hour, keepDays } = (input ?? {}) as Record<string, unknown>;
+  const whole = (value: unknown, least: number, most: number) => Number.isInteger(value) && (value as number) >= least && (value as number) <= most;
+  if (typeof enabled !== 'boolean' || !periods.includes(everyHours as number) || !whole(hour, 0, 23) || !whole(keepDays, 1, 90)) {
+    throw new Refusal(400, `A schedule is on or off, every ${periods.join(', ')} hours, at an hour from 0 to 23, kept 1 to 90 days.`);
+  }
+  await mkdir(root, { recursive: true });
+  await writeFile(path.join(root, '.schedule.json.partial'), JSON.stringify({ enabled, everyHours, hour, keepDays }));
+  await rename(path.join(root, '.schedule.json.partial'), path.join(root, '.schedule.json'));
+  await audit(login, 'schedule', '*', `${enabled ? `every ${everyHours} h from ${hour}:00 UTC` : 'off'}, ${keepDays} days`, root);
+}
+
+function missing(error: NodeJS.ErrnoException) {
+  if (error.code === 'ENOENT') {
+    return undefined;
+  }
+  throw error;
+}
+
 export const projectPattern = /^[a-z0-9][a-z0-9_-]*$/;
 export const stampPattern = /^\d{8}T\d{6}Z$/;
 const hour = 3600_000;
@@ -79,7 +118,12 @@ export function stampTime(stamp: string) {
   return Date.parse(`${stamp.slice(0, 4)}-${stamp.slice(4, 6)}-${stamp.slice(6, 8)}T${stamp.slice(9, 11)}:${stamp.slice(11, 13)}:${stamp.slice(13, 15)}Z`);
 }
 
-export async function backupConditions(now: number, root = backupRoot(), hours = 26) {
+export async function backupConditions(now: number, root = backupRoot(), least = 26) {
+  const schedule = await readSchedule(root);
+  if (!schedule.enabled) {
+    return [];
+  }
+  const hours = Math.max(least, schedule.everyHours + 2);
   return (await listBackups(root)).flatMap(({ project, archives }) => {
     const latest = archives.find((archive) => !archive.imported);
     if (!latest) {

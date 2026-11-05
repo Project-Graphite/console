@@ -3,6 +3,10 @@
 @import '@xterm/xterm/css/xterm.css';
 @source '../../node_modules/@project-graphite/ui/dist';
 
+.shell {
+  width: min(100% - 3rem, 120rem);
+}
+
 @layer components {
   .stat-card {
     @apply rounded-xl border border-line bg-surface p-4;
