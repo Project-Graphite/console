@@ -31,7 +31,7 @@ function Archive({ archive, onRestore }: { archive: BackupSummary; onRestore: ()
       <td className="mono-sm whitespace-nowrap">{bytes(archive.bytes)}</td>
       <td className="whitespace-nowrap">
         {archive.bytes !== undefined && (
-          <span className="flex items-center gap-2">
+          <span className="flex items-center justify-end gap-2">
             <MuiLink className="mono-sm" href={`/api/backups/${archive.project}/${archive.stamp}.tar`} underline="always">
               download
             </MuiLink>
@@ -117,24 +117,33 @@ export function Backups() {
       {data.requests.length > 0 && (
         <section className="stat-card space-y-2">
           <h2 className="mono-sm text-muted">Recent requests</h2>
-          <table className="data-table">
-            <tbody>
-              {data.requests.map((entry) => (
-                <tr key={entry.id}>
-                  <td className="whitespace-nowrap">
-                    <TagChip color={requestColors[entry.state]} label={entry.state} />
-                  </td>
-                  <td className="mono-sm whitespace-nowrap">
-                    {entry.action} {entry.project}
-                    {entry.archive && <span className="text-faint"> {entry.archive}</span>}
-                  </td>
-                  <td className="mono-sm text-muted">{entry.by}</td>
-                  <td className="mono-sm break-all text-muted">{entry.output}</td>
-                  <td className="mono-sm whitespace-nowrap text-faint">{entry.at && timeAgo(entry.at)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="overflow-x-auto">
+            <table className="data-table min-w-180 table-fixed">
+              <colgroup>
+                <col className="w-[12%]" />
+                <col className="w-[28%]" />
+                <col className="w-[14%]" />
+                <col className="w-[32%]" />
+                <col className="w-[14%]" />
+              </colgroup>
+              <tbody>
+                {data.requests.map((entry) => (
+                  <tr key={entry.id}>
+                    <td className="whitespace-nowrap">
+                      <TagChip color={requestColors[entry.state]} label={entry.state} />
+                    </td>
+                    <td className="mono-sm truncate">
+                      {entry.action} {entry.project}
+                      {entry.archive && <span className="text-faint"> {entry.archive}</span>}
+                    </td>
+                    <td className="mono-sm truncate text-muted">{entry.by}</td>
+                    <td className="mono-sm break-all text-muted">{entry.output}</td>
+                    <td className="mono-sm whitespace-nowrap text-right text-faint">{entry.at && timeAgo(entry.at)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </section>
       )}
       {data.projects.map(({ project, archives }) => (
@@ -146,7 +155,14 @@ export function Backups() {
             </Button>
           </header>
           <div className="overflow-x-auto">
-            <table className="data-table">
+            <table className="data-table min-w-180 table-fixed">
+              <colgroup>
+                <col className="w-[26%]" />
+                <col className="w-[14%]" />
+                <col className="w-[30%]" />
+                <col className="w-[10%]" />
+                <col className="w-[20%]" />
+              </colgroup>
               <thead>
                 <tr>
                   <th>taken</th>
