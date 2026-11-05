@@ -137,7 +137,38 @@ export interface SecretDetail extends Secret {
 export interface Point {
   at: number;
   cpu: number;
+  cpuPeak: number;
   memory: number;
+  memoryPeak: number;
+  net: number;
+  io: number;
+}
+
+export type Metric = Exclude<keyof Point, 'at'>;
+
+export interface Traffic {
+  rx: number;
+  tx: number;
+  read: number;
+  write: number;
+}
+
+export interface ContainerLive extends Traffic {
+  project: string;
+  cpu: number;
+  cpuLimit: number | null;
+  memory: number;
+  memoryLimit: number | null;
+}
+
+export interface Frame {
+  at: number;
+  host: Host & Traffic;
+  containers: Record<string, ContainerLive>;
+}
+
+export function rate(value: number | null | undefined) {
+  return value === null || value === undefined ? '—' : `${bytes(value)}/s`;
 }
 
 export interface Series {
@@ -180,11 +211,29 @@ export interface Alert {
   issue: number | null;
 }
 
+export interface AlertRule {
+  kind: string;
+  label: string;
+  unit: string | null;
+  threshold: number;
+  minutes: number;
+  enabled: boolean;
+}
+
 export interface AlertsData {
   active: Alert[];
   recent: Alert[];
   notifying: boolean;
+  emailing: boolean;
   repo: string;
+  rules: AlertRule[];
+}
+
+export interface LogMatch {
+  container: string;
+  stream: 'stdout' | 'stderr';
+  time: string;
+  text: string;
 }
 
 export interface DocPage {
