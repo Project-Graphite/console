@@ -3,7 +3,7 @@ import http from 'node:http';
 import path from 'node:path';
 import { WebSocketServer } from 'ws';
 import { Access, permits, scopePattern } from './access.ts';
-import { Alerts, ruleKinds, type RuleKind } from './alerts.ts';
+import { Alerts } from './alerts.ts';
 import { authenticate, callback, githubToken, login, logout, organisationMembers, roleNow, sessionMs, type Role, type User } from './auth.ts';
 import { download, listBackups, order, requests, upload } from './backups.ts';
 import { config } from './config.ts';
@@ -11,13 +11,12 @@ import { docker } from './docker.ts';
 import { docs } from './docs.ts';
 import { History, projectTotals, ranges, type Range } from './history.ts';
 import { collect, containers, diskUsage, projects, refresh, refreshDisk, snapshot, type ContainerView } from './inventory.ts';
-import { serve as serveLive } from './live.ts';
-import { email, emailing, monitor } from './monitor.ts';
+import { monitor } from './monitor.ts';
 import { open, openSocket, parseOpen } from './proxy.ts';
 import { Refusal } from './refusal.ts';
 import { appliedAt, appliedCompose, appliedValueNames, redeployStatus, startRedeploy } from './rollout.ts';
 import { composeReferences, parseKeys, projectPattern, SecretStore } from './secrets.ts';
-import { downloadLogs, logs, searchLogs, terminal } from './terminal.ts';
+import { downloadLogs, logs, terminal } from './terminal.ts';
 
 const history = new History(config.dataDir);
 const access = new Access(config.dataDir);
@@ -244,43 +243,7 @@ async function api(user: User, request: http.IncomingMessage, url: URL) {
     return { ...user, grants: user.owner ? ['*'] : access.scopes(user.login), ssh: user.owner ? config.sshTarget : null };
   }
   if (route === 'GET /api/alerts') {
-    return {
-      active: alerts.active(),
-      recent: alerts.recent(),
-      notifying: Boolean(config.alertsToken),
-      emailing: emailing(),
-      repo: config.alertsRepo,
-      rules: Object.values(alerts.rules()).map((rule) => ({ ...ruleKinds[rule.kind], ...rule })),
-    };
-  }
-  const rule = /^POST \/api\/alerts\/rules\/([a-z-]+)$/.exec(route);
-  if (rule) {
-    await requireOwnerNow(request);
-    if (!(rule[1] in ruleKinds)) {
-      throw new Refusal(404, `There is no ${rule[1]} rule.`);
-    }
-    const { threshold, minutes, enabled } = (await body(request)) as { threshold?: unknown; minutes?: unknown; enabled?: unknown };
-    const number = (value: unknown, most: number) => typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= most;
-    if (!number(threshold, 100_000) || !number(minutes, 1440) || typeof enabled !== 'boolean') {
-      throw new Refusal(400, 'A rule needs a threshold, minutes between 0 and 1440, and enabled.');
-    }
-    alerts.setRule({ kind: rule[1] as RuleKind, threshold: threshold as number, minutes: minutes as number, enabled });
-    return { ok: true };
-  }
-  if (route === 'POST /api/alerts/test') {
-    await requireOwnerNow(request);
-    await email('Test alert from the Graphite console', `${user.login} sent this test from ${config.appUrl}/#/alerts.`);
-    return { ok: true };
-  }
-  if (route === 'GET /api/logs/search') {
-    const text = (url.searchParams.get('q') ?? '').trim();
-    const window = { '15m': 900_000, '1h': 3600_000, '6h': 21_600_000, '24h': 86_400_000, '7d': 604_800_000 }[url.searchParams.get('since') ?? '1h'];
-    if (text.length < 2 || !window) {
-      throw new Refusal(400, 'Search for at least two characters over 15m, 1h, 6h, 24h or 7d.');
-    }
-    const project = url.searchParams.get('project');
-    const chosen = (await containers()).filter((container) => !project || container.project === project);
-    return searchLogs(chosen, text, Date.now() - window);
+    return { active: alerts.active(), recent: alerts.recent(), notifying: Boolean(config.alertsToken), repo: config.alertsRepo };
   }
   if (route === 'GET /api/docs') {
     return docs();
@@ -465,10 +428,6 @@ async function handle(request: http.IncomingMessage, response: http.ServerRespon
     const container = await findContainer(target.container);
     await requireNow(request, user, `project:${container.project}`);
     return open(request, response, target, url.search);
-  }
-  if (url.pathname === '/api/live' && request.method === 'GET') {
-    const token = githubToken(request);
-    return serveLive(request, response, async () => (await roleNow(token)) !== undefined);
   }
   const logFile = /^\/api\/containers\/([0-9a-f]{12,64})\/logs$/.exec(url.pathname);
   if (logFile && request.method === 'GET') {

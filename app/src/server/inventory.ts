@@ -1,6 +1,6 @@
-import { docker, type DockerContainer } from './docker.ts';
+import { cpuPercent, docker, memoryUsed, type DockerContainer, type DockerStats } from './docker.ts';
 import type { History } from './history.ts';
-import { latest, start, track, type ContainerLive, type HostLive } from './live.ts';
+import { hostStats } from './host.ts';
 
 export interface ContainerView {
   id: string;
@@ -29,8 +29,10 @@ export interface Disk {
   volumes: { name: string; project: string | null; size: number; inUse: boolean }[];
 }
 
-let listed: ContainerView[] | undefined;
-let measuring: Promise<ContainerView[]> | undefined;
+type Snapshot = { host: Awaited<ReturnType<typeof hostStats>>; views: ContainerView[] };
+
+let latest: Snapshot | undefined;
+let measuring: Promise<Snapshot> | undefined;
 let disk: Disk | undefined;
 let reading: Promise<Disk> | undefined;
 
@@ -38,7 +40,7 @@ function health(status: string) {
   return /\((healthy|unhealthy|health: starting)\)/.exec(status)?.[1] ?? null;
 }
 
-function view(container: DockerContainer): ContainerView {
+function view(container: DockerContainer, stats?: DockerStats): ContainerView {
   return {
     id: container.Id,
     name: container.Names[0].replace(/^\//, ''),
@@ -53,30 +55,33 @@ function view(container: DockerContainer): ContainerView {
     ports: [...new Set(container.Ports.map((port) => port.PrivatePort))].sort((a, b) => a - b),
     networks: Object.fromEntries(Object.entries(container.NetworkSettings.Networks).map(([name, network]) => [name, network.IPAddress])),
     sleeps: container.Labels['sablier.enable'] === 'true',
-    cpu: null,
-    memory: null,
-    memoryLimit: null,
+    cpu: stats ? cpuPercent(stats) : null,
+    memory: stats ? memoryUsed(stats) : null,
+    memoryLimit: stats?.memory_stats.limit ?? null,
   };
 }
 
-export function withLive(view: ContainerView, live: ContainerLive | undefined): ContainerView {
-  return view.state === 'running' && live ? { ...view, cpu: live.cpu, memory: live.memory, memoryLimit: live.memoryLimit } : view;
+async function measure() {
+  const containers = await docker<DockerContainer[]>('GET', '/containers/json?all=1');
+  const stats = await Promise.all(
+    containers.map((container) =>
+      container.State === 'running'
+        ? docker<DockerStats>('GET', `/containers/${container.Id}/stats?stream=false`).catch(() => undefined)
+        : undefined,
+    ),
+  );
+  return containers.map((container, index) => view(container, stats[index]));
 }
 
 export function refresh() {
-  measuring ??= docker<DockerContainer[]>('GET', '/containers/json?all=1')
-    .then((containers) => {
-      listed = containers.map(view);
-      track(listed);
-      return listed;
-    })
+  measuring ??= Promise.all([hostStats(), measure()])
+    .then(([host, views]) => (latest = { host, views }))
     .finally(() => (measuring = undefined));
   return measuring;
 }
 
-export async function snapshot(): Promise<{ host: HostLive; views: ContainerView[] }> {
-  const [views, frame] = await Promise.all([listed ?? refresh(), latest()]);
-  return { host: frame.host, views: views.map((entry) => withLive(entry, frame.containers[entry.name])) };
+export async function snapshot() {
+  return latest ?? (await refresh());
 }
 
 export async function containers() {
@@ -146,17 +151,25 @@ export function projects(views: ContainerView[], usage?: Disk) {
     });
 }
 
-export function collect(history: History, { listEvery = 5000, diskEvery = 300_000 } = {}) {
+export function collect(history: History, { measureEvery = 5000, recordEvery = 60_000, diskEvery = 300_000 } = {}) {
+  const record = async () => {
+    const { host, views } = await snapshot();
+    history.record(Date.now(), [
+      { target: 'host', cpu: host.cpu, memory: host.memory.used },
+      ...views.filter((container) => container.cpu !== null).map((container) => ({
+        target: container.name,
+        cpu: container.cpu!,
+        memory: container.memory!,
+      })),
+    ]);
+  };
   const report = (task: string) => (error: unknown) => console.error(`${task} failed:`, error);
-  const stop = start(history);
   const timers = [
-    setInterval(() => void refresh().catch(report('container list')), listEvery),
+    setInterval(() => void refresh().catch(report('measure')), measureEvery),
+    setInterval(() => void record().catch(report('sample')), recordEvery),
     setInterval(() => void refreshDisk().catch(report('disk usage')), diskEvery),
   ];
-  void refresh().catch(report('container list'));
+  void refresh().catch(report('measure'));
   void refreshDisk().catch(report('disk usage'));
-  return () => {
-    stop();
-    timers.forEach(clearInterval);
-  };
+  return () => timers.forEach(clearInterval);
 }

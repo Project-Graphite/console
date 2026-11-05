@@ -79,13 +79,13 @@ export function stampTime(stamp: string) {
   return Date.parse(`${stamp.slice(0, 4)}-${stamp.slice(4, 6)}-${stamp.slice(6, 8)}T${stamp.slice(9, 11)}:${stamp.slice(11, 13)}:${stamp.slice(13, 15)}Z`);
 }
 
-export async function backupConditions(now: number, root = backupRoot(), hours = 26) {
+export async function backupConditions(now: number, root = backupRoot()) {
   return (await listBackups(root)).flatMap(({ project, archives }) => {
     const latest = archives.find((archive) => !archive.imported);
     if (!latest) {
       return [];
     }
-    if (now - stampTime(latest.stamp) > hours * hour) {
+    if (now - stampTime(latest.stamp) > 26 * hour) {
       return [{ key: `backup:${project}`, title: `${project} has no recent backup`, detail: `The newest backup is ${Math.round((now - stampTime(latest.stamp)) / hour)} hours old.` }];
     }
     if (!latest.ok) {

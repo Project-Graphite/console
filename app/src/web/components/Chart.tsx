@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type PointerEvent } from 'react';
-import type { Metric, Series } from '../api';
+import type { Series } from '../api';
 
 const palette = ['#6a9eea', '#5fbf7f', '#e0915a', '#a388e8', '#4fb8b0', '#e07fb5', '#d7b24a', '#e5736b', '#8b8b95'];
 const height = 180;
@@ -8,7 +8,7 @@ const pad = { top: 10, right: 10, bottom: 22, left: 58 };
 export interface ChartProps {
   label: string;
   series: Series[];
-  metric: Metric;
+  metric: 'cpu' | 'memory';
   span: number;
   step: number;
   now: number;
@@ -30,7 +30,6 @@ function timeLabel(at: number, span: number, precise = false) {
   return new Intl.DateTimeFormat(undefined, {
     ...(span > day || precise ? { day: 'numeric', month: 'short' } : {}),
     ...(span <= 7 * day || precise ? { hour: '2-digit', minute: '2-digit' } : {}),
-    ...(span <= 600_000 ? { second: '2-digit' } : {}),
   }).format(at);
 }
 
@@ -45,7 +44,7 @@ function useWidth() {
   return { ref, width };
 }
 
-function Breakdown({ lines, at, metric, total, format }: { lines: Series[]; at: number; metric: Metric; total: number; format: (value: number) => string }) {
+function Breakdown({ lines, at, metric, total, format }: { lines: Series[]; at: number; metric: 'cpu' | 'memory'; total: number; format: (value: number) => string }) {
   const parts = lines
     .map((line) => ({ name: line.name, value: line.points.find((point) => point.at === at)?.[metric] ?? 0 }))
     .filter((part) => part.value > 0)

@@ -59,7 +59,7 @@ export function ProjectPage({ slug, user }: { slug: string; user: User }) {
         </span>
       </PageHeader>
 
-      <Metrics live={project.containers.map((container) => ({ name: container.name, label: container.service }))} query={`project=${slug}`} />
+      <Metrics query={`project=${slug}`} />
 
       <section className="stat-card space-y-2">
         <h2 className="mono-sm text-muted">Containers</h2>

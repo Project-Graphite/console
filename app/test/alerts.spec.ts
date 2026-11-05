@@ -2,11 +2,10 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { Alerts, defaultRules } from '../src/server/alerts.ts';
+import { Alerts } from '../src/server/alerts.ts';
 import { backupConditions } from '../src/server/backups.ts';
 import type { ContainerView } from '../src/server/inventory.ts';
-import type { HostLive } from '../src/server/live.ts';
-import { containerConditions, hostConditions, usageConditions } from '../src/server/monitor.ts';
+import { containerConditions, hostConditions } from '../src/server/monitor.ts';
 
 const directories: string[] = [];
 
@@ -39,52 +38,33 @@ function container(service: string, overrides: Partial<ContainerView> = {}): Con
     sleeps: false,
     cpu: 1,
     memory: 1,
-    memoryLimit: 100,
+    memoryLimit: 1,
     ...overrides,
   };
 }
 
-const condition = { key: 'disk', title: 'The VPS disk is 90% used', detail: 'Over 85%.', for: 120_000 };
+const condition = { key: 'disk', title: 'The VPS disk is 90% used', detail: 'Over 85%.' };
 
 describe('Alerts', () => {
-  it('opens an alert once its condition has held for the rule duration, and resolves it after a clear minute', () => {
+  it('opens an alert only after two checks in a row, and resolves it after two clear checks', () => {
     const alerts = new Alerts(temporary());
-    expect(alerts.update([condition], 0).opened).toEqual([]);
-    expect(alerts.update([condition], 110_000).opened).toEqual([]);
-    expect(alerts.update([condition], 120_000).opened.map((alert) => [alert.key, alert.since])).toEqual([['disk', 0]]);
-    expect(alerts.update([condition], 130_000).opened).toEqual([]);
-    expect(alerts.update([], 140_000).resolved).toEqual([]);
-    expect(alerts.update([], 190_000).resolved).toEqual([]);
+    expect(alerts.update([condition], 1).opened).toEqual([]);
+    expect(alerts.update([condition], 2).opened.map((alert) => alert.key)).toEqual(['disk']);
+    expect(alerts.update([condition], 3).opened).toEqual([]);
+    expect(alerts.update([], 4).resolved).toEqual([]);
     expect(alerts.active()).toHaveLength(1);
-    expect(alerts.update([], 200_000).resolved.map((alert) => alert.resolved)).toEqual([200_000]);
+    expect(alerts.update([], 5).resolved.map((alert) => alert.resolved)).toEqual([5]);
     expect(alerts.active()).toEqual([]);
-    expect(alerts.recent(210_000).map((alert) => alert.key)).toEqual(['disk']);
+    expect(alerts.recent(6).map((alert) => alert.key)).toEqual(['disk']);
     alerts.close();
   });
 
-  it('ignores a condition that clears before its duration, and keeps an alert that returns within the clear minute', () => {
+  it('ignores a condition that clears before it is confirmed', () => {
     const alerts = new Alerts(temporary());
-    alerts.update([condition], 0);
-    alerts.update([], 60_000);
-    expect(alerts.update([condition], 130_000).opened).toEqual([]);
-    expect(alerts.update([condition], 250_000).opened).toHaveLength(1);
-    alerts.update([], 260_000);
-    alerts.update([condition], 290_000);
-    expect(alerts.update([], 330_000).resolved).toEqual([]);
-    expect(alerts.active()).toHaveLength(1);
+    alerts.update([condition], 1);
+    alerts.update([], 2);
+    expect(alerts.update([condition], 3).opened).toEqual([]);
     alerts.close();
-  });
-
-  it('keeps edited rules and falls back to the defaults', () => {
-    const directory = temporary();
-    const alerts = new Alerts(directory);
-    expect(alerts.rules()['host-disk']).toEqual(defaultRules['host-disk']);
-    alerts.setRule({ kind: 'host-disk', threshold: 70, minutes: 0.5, enabled: false });
-    alerts.close();
-    const reopened = new Alerts(directory);
-    expect(reopened.rules()['host-disk']).toEqual({ kind: 'host-disk', threshold: 70, minutes: 0.5, enabled: false });
-    expect(reopened.rules()['host-cpu']).toEqual(defaultRules['host-cpu']);
-    reopened.close();
   });
 });
 
@@ -94,29 +74,6 @@ describe('rules', () => {
   it('flags host memory over 90%, swap over 80% and disk over 85%', () => {
     const host = { cpu: 0, cpus: 2, load: [], uptime: 0, memory: usage(91), swap: usage(50), disk: usage(86) };
     expect(hostConditions(host).map((found) => found.key)).toEqual(['memory', 'disk']);
-  });
-
-  it('follows edited thresholds, durations and switches', () => {
-    const host = { cpu: 95, cpus: 2, memory: usage(91), swap: usage(50), disk: usage(86) };
-    const rules = { ...defaultRules, 'host-cpu': { ...defaultRules['host-cpu'], minutes: 1 }, 'host-memory': { ...defaultRules['host-memory'], enabled: false }, 'host-swap': { ...defaultRules['host-swap'], threshold: 40 } };
-    expect(hostConditions(host, rules).map((found) => [found.key, found.for])).toEqual([
-      ['cpu', 60_000],
-      ['swap', 120_000],
-      ['disk', 120_000],
-    ]);
-  });
-
-  it("measures a container's CPU and memory against its own limits", () => {
-    const live = (cpu: number, cpuLimit: number | null, memory: number, memoryLimit: number | null) => ({ project: 'strata', cpu, cpuLimit, memory, memoryLimit, rx: 0, tx: 0, read: 0, write: 0 });
-    const frame = {
-      host: { cpus: 4 } as HostLive,
-      containers: {
-        'strata-app-1': live(70, 0.75, 95, 100),
-        'strata-postgres-1': live(380, null, 10, null),
-        'strata-redis-1': live(10, 0.25, 50, 100),
-      },
-    };
-    expect(usageConditions(frame).map((found) => found.key)).toEqual(['cpu:strata-app-1', 'memory:strata-app-1', 'cpu:strata-postgres-1']);
   });
 
   it('flags stopped and unhealthy containers, but not finished jobs or sleeping projects', () => {

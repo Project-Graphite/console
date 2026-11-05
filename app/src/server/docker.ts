@@ -16,26 +16,9 @@ export interface DockerContainer {
 }
 
 export interface DockerStats {
-  read?: string;
   cpu_stats: { cpu_usage: { total_usage: number }; system_cpu_usage?: number; online_cpus?: number };
   precpu_stats: { cpu_usage: { total_usage: number }; system_cpu_usage?: number };
   memory_stats: { usage?: number; limit?: number; stats?: { inactive_file?: number } };
-  networks?: Record<string, { rx_bytes: number; tx_bytes: number }>;
-  blkio_stats?: { io_service_bytes_recursive?: { op: string; value: number }[] | null };
-}
-
-export function networkTotals(stats: DockerStats) {
-  return Object.values(stats.networks ?? {}).reduce((sum, network) => ({ rx: sum.rx + network.rx_bytes, tx: sum.tx + network.tx_bytes }), { rx: 0, tx: 0 });
-}
-
-export function ioTotals(stats: DockerStats) {
-  return (stats.blkio_stats?.io_service_bytes_recursive ?? []).reduce(
-    (sum, entry) => ({
-      read: sum.read + (entry.op.toLowerCase() === 'read' ? entry.value : 0),
-      write: sum.write + (entry.op.toLowerCase() === 'write' ? entry.value : 0),
-    }),
-    { read: 0, write: 0 },
-  );
 }
 
 function call(method: string, path: string, body?: unknown, headers: Record<string, string> = {}) {

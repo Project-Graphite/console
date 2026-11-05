@@ -1,114 +1,7 @@
 import MuiLink from '@mui/material/Link';
-import MuiTextField from '@mui/material/TextField';
-import { Button, EmptyState, ErrorState, PageHeader, timeAgo, Toggle } from '@project-graphite/ui';
-import { useState } from 'react';
-import { post, type Alert, type AlertRule, type AlertsData } from '../api';
+import { EmptyState, ErrorState, PageHeader, timeAgo } from '@project-graphite/ui';
+import type { Alert, AlertsData } from '../api';
 import { usePoll } from '../usePoll';
-
-function RuleRow({ rule, owner, onSaved }: { rule: AlertRule; owner: boolean; onSaved: () => void }) {
-  const [threshold, setThreshold] = useState(String(rule.threshold));
-  const [minutes, setMinutes] = useState(String(rule.minutes));
-  const [enabled, setEnabled] = useState(rule.enabled);
-  const [message, setMessage] = useState<string>();
-  const changed = Number(threshold) !== rule.threshold || Number(minutes) !== rule.minutes || enabled !== rule.enabled;
-  const save = () =>
-    post(`/api/alerts/rules/${rule.kind}`, { threshold: Number(threshold), minutes: Number(minutes), enabled }).then(
-      () => {
-        setMessage('Saved.');
-        onSaved();
-      },
-      (error: Error) => setMessage(error.message),
-    );
-  return (
-    <tr>
-      <td>
-        <Toggle checked={enabled} disabled={!owner} label={rule.label} onChange={setEnabled} />
-      </td>
-      <td className="whitespace-nowrap">
-        {rule.unit ? (
-          <MuiTextField
-            className="w-28"
-            disabled={!owner}
-            label={rule.unit}
-            onChange={(event) => setThreshold(event.target.value)}
-            size="small"
-            slotProps={{ htmlInput: { min: 0, step: 'any' } }}
-            type="number"
-            value={threshold}
-          />
-        ) : (
-          <span className="mono-sm text-faint">—</span>
-        )}
-      </td>
-      <td className="whitespace-nowrap">
-        <MuiTextField
-          className="w-28"
-          disabled={!owner}
-          label="for minutes"
-          onChange={(event) => setMinutes(event.target.value)}
-          size="small"
-          slotProps={{ htmlInput: { min: 0, step: 'any' } }}
-          type="number"
-          value={minutes}
-        />
-      </td>
-      <td className="whitespace-nowrap">
-        {owner && (
-          <span className="flex items-center gap-2">
-            <Button disabled={!changed} onClick={() => void save()} size="small">
-              Save
-            </Button>
-            {message && <span className="mono-sm text-muted">{message}</span>}
-          </span>
-        )}
-      </td>
-    </tr>
-  );
-}
-
-function Rules({ data, owner, onSaved }: { data: AlertsData; owner: boolean; onSaved: () => void }) {
-  const [message, setMessage] = useState<string>();
-  const test = () => {
-    setMessage('Sending…');
-    post('/api/alerts/test').then(
-      () => setMessage('Sent; check the inbox.'),
-      (error: Error) => setMessage(error.message),
-    );
-  };
-  return (
-    <section className="stat-card space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="mono-sm text-muted">Rules</h2>
-        {owner && (
-          <span className="flex items-center gap-2">
-            {message && <span className="mono-sm text-muted">{message}</span>}
-            <Button disabled={!data.emailing} onClick={test} size="small">
-              Send a test email
-            </Button>
-          </span>
-        )}
-      </div>
-      <div className="overflow-x-auto">
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>alert when</th>
-              <th>threshold</th>
-              <th>held for</th>
-              <th aria-label="save" />
-            </tr>
-          </thead>
-          <tbody>
-            {data.rules.map((rule) => (
-              <RuleRow key={`${rule.kind}-${rule.threshold}-${rule.minutes}-${rule.enabled}`} onSaved={onSaved} owner={owner} rule={rule} />
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <p className="mono-sm text-faint">An alert resolves once its condition has been clear for a minute. CPU and memory of a container are measured against its own limits.</p>
-    </section>
-  );
-}
 
 function duration(from: number, to: number) {
   const minutes = Math.max(1, Math.round((to - from) / 60_000));
@@ -123,8 +16,8 @@ function Issue({ alert, repo }: { alert: Alert; repo: string }) {
   ) : null;
 }
 
-export function Alerts({ owner }: { owner: boolean }) {
-  const { data, error, reload } = usePoll<AlertsData>('/api/alerts', 10_000);
+export function Alerts() {
+  const { data, error, reload } = usePoll<AlertsData>('/api/alerts', 30_000);
   if (error && !data) {
     return <ErrorState onRetry={() => void reload()} title="The console could not read its alerts">{error.message}</ErrorState>;
   }
@@ -135,7 +28,7 @@ export function Alerts({ owner }: { owner: boolean }) {
     <div className="space-y-6">
       <PageHeader title="Alerts">
         <span className="mono-sm text-muted">
-          Checked every 10 seconds against the rules below. {data.emailing ? 'Each alert and its recovery are emailed.' : 'Email is off until SMTP_URL and ALERTS_EMAIL are set.'}{' '}
+          Checked every minute: stopped, unhealthy or restarting containers, host memory, swap and disk, and backups.{' '}
           {data.notifying ? `Each alert also opens an issue in ${data.repo}.` : 'GitHub issues are off until ALERTS_TOKEN is set.'}
         </span>
       </PageHeader>
@@ -184,7 +77,6 @@ export function Alerts({ owner }: { owner: boolean }) {
           </div>
         </section>
       )}
-      <Rules data={data} onSaved={() => void reload()} owner={owner} />
     </div>
   );
 }

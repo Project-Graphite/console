@@ -3,13 +3,12 @@ import MuiLink from '@mui/material/Link';
 import MuiTextField from '@mui/material/TextField';
 import { EmptyState, ErrorState, Meter, PageHeader, TagChip, timeAgo } from '@project-graphite/ui';
 import { useState } from 'react';
-import { bytes, completed, percent, rate, stampDate, type AlertsData, type Host, type Overview as OverviewData, type Project, type Traffic } from '../api';
+import { bytes, completed, percent, stampDate, type AlertsData, type Host, type Overview as OverviewData, type Project } from '../api';
 import { Metrics } from '../components/Metrics';
-import { projectTotals, useLive } from '../live';
 import { load, save } from '../stored';
 import { usePoll } from '../usePoll';
 
-function HostCards({ host, traffic }: { host: Host; traffic?: Traffic }) {
+function HostCards({ host }: { host: Host }) {
   const cards = [
     { label: 'CPU', value: percent(host.cpu), detail: `${host.cpus} cores · load ${host.load.map((value) => value.toFixed(2)).join(' ')}`, ratio: host.cpu / 100 },
     { label: 'Memory', value: bytes(host.memory.used), detail: `of ${bytes(host.memory.total)}`, ratio: host.memory.used / host.memory.total },
@@ -17,22 +16,15 @@ function HostCards({ host, traffic }: { host: Host; traffic?: Traffic }) {
     { label: 'Disk', value: bytes(host.disk.used), detail: `of ${bytes(host.disk.total)}`, ratio: host.disk.used / host.disk.total },
   ];
   return (
-    <section className="space-y-2">
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {cards.map((card) => (
-          <div className="stat-card space-y-2" key={card.label}>
-            <p className="mono-sm text-muted">{card.label}</p>
-            <p className="text-2xl">{card.value}</p>
-            <Meter label={card.label} value={card.ratio} />
-            <p className="mono-sm text-faint">{card.detail}</p>
-          </div>
-        ))}
-      </div>
-      {traffic && (
-        <p className="mono-sm text-muted">
-          network in {rate(traffic.rx)} · out {rate(traffic.tx)} · disk read {rate(traffic.read)} · written {rate(traffic.write)} · live
-        </p>
-      )}
+    <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      {cards.map((card) => (
+        <div className="stat-card space-y-2" key={card.label}>
+          <p className="mono-sm text-muted">{card.label}</p>
+          <p className="text-2xl">{card.value}</p>
+          <Meter label={card.label} value={card.ratio} />
+          <p className="mono-sm text-faint">{card.detail}</p>
+        </div>
+      ))}
     </section>
   );
 }
@@ -75,7 +67,7 @@ function status(project: Project) {
   return <TagChip color={running === services.length ? 'green' : 'yellow'} label={`${running}/${services.length} running`} />;
 }
 
-function ProjectList({ projects, live }: { projects: OverviewData['projects']; live: ReturnType<typeof projectTotals> }) {
+function ProjectList({ projects }: { projects: OverviewData['projects'] }) {
   const [filter, setFilter] = useState('');
   const [pinned, setPinned] = useState<string[]>(() => load<string[]>('console.pinned', []));
   const toggle = (slug: string) => {
@@ -129,8 +121,8 @@ function ProjectList({ projects, live }: { projects: OverviewData['projects']; l
                     {project.needsRedeploy && <TagChip color="red" href={`#/project/${project.slug}`} label="needs redeploy" />}
                   </span>
                 </td>
-                <td className="mono-sm whitespace-nowrap">{percent(live.get(project.slug)?.cpu ?? project.cpu)}</td>
-                <td className="mono-sm whitespace-nowrap">{bytes(live.get(project.slug)?.memory ?? project.memory)}</td>
+                <td className="mono-sm whitespace-nowrap">{percent(project.cpu)}</td>
+                <td className="mono-sm whitespace-nowrap">{bytes(project.memory)}</td>
                 <td className="mono-sm whitespace-nowrap">{project.storage ? bytes(project.storage.volumes + project.storage.images) : '—'}</td>
               </tr>
             ))}
@@ -144,9 +136,7 @@ function ProjectList({ projects, live }: { projects: OverviewData['projects']; l
 
 export function Overview() {
   const { data, error, reload } = usePoll<OverviewData>('/api/overview');
-  const active = usePoll<AlertsData>('/api/alerts', 30_000).data?.active ?? [];
-  const frame = useLive().at(-1);
-  const host = frame?.host ?? data?.host;
+  const active = usePoll<AlertsData>('/api/alerts', 60_000).data?.active ?? [];
   if (error && !data) {
     return <ErrorState onRetry={() => void reload()} title="The console could not read the VPS">{error.message}</ErrorState>;
   }
@@ -159,7 +149,7 @@ export function Overview() {
           <p className="mono-sm text-muted">{active.length === 1 ? active[0].detail : active.map((alert) => alert.title).join(' · ')}</p>
         </a>
       )}
-      {host && <HostCards host={host} traffic={frame?.host} />}
+      {data?.host && <HostCards host={data.host} />}
       {data && (
         <p className="mono-sm text-muted">
           Backups:{' '}
@@ -168,10 +158,10 @@ export function Overview() {
             : 'none has run yet'}
         </p>
       )}
-      {data?.host && <Metrics cpuMax={100} live="host" memoryMax={data.host.memory.total} query="target=host&breakdown=projects" />}
+      {data?.host && <Metrics cpuMax={100} memoryMax={data.host.memory.total} query="target=host&breakdown=projects" />}
       {data?.host && data.docker && <Storage docker={data.docker} host={data.host} />}
       {data && data.projects.length === 0 && <EmptyState title="No projects to show">Nothing runs on the VPS yet.</EmptyState>}
-      {data && data.projects.length > 0 && <ProjectList live={projectTotals(frame)} projects={data.projects} />}
+      {data && data.projects.length > 0 && <ProjectList projects={data.projects} />}
     </div>
   );
 }
