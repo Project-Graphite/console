@@ -101,7 +101,7 @@ export function ProjectPage({ slug, user }: { slug: string; user: User }) {
       {can(user, `secrets:${slug}`) && (
         <section className="space-y-2">
           <h2 className="mono-sm text-muted">Secrets</h2>
-          <SecretList project={slug} user={user} />
+          <SecretList project={slug} />
         </section>
       )}
 

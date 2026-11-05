@@ -45,7 +45,7 @@ function Page({ hash, user }: { hash: string; user: User }) {
   if (docs) return <Docs path={docs[1] ?? ''} />;
   const secret = /^\/secrets\/([a-z0-9-]+)\/([A-Z_][A-Z0-9_]*)(?:\/(history|usage))?$/.exec(hash);
   if (secret && can(user, `secrets:${secret[1]}`)) return <SecretPage key={hash} name={secret[2]} project={secret[1]} tab={secret[3] ?? ''} user={user} />;
-  if (user.owner && hash === '/secrets') return <Secrets user={user} />;
+  if (user.owner && hash === '/secrets') return <Secrets />;
   if (user.owner && hash === '/backups') return <Backups />;
   if (hash === '/images') return <Images user={user} />;
   if (hash === '/volumes') return <Volumes />;

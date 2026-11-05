@@ -124,7 +124,6 @@ export interface Secret {
 
 export interface SecretProject {
   project: string;
-  needsRedeploy: boolean;
   missing: string[];
 }
 

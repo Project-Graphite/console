@@ -151,12 +151,11 @@ async function needsRedeploy(project: string, views: ContainerView[]) {
   return changed !== null && created.length > 0 && changed > Math.max(...created, (await appliedAt(project)) ?? 0);
 }
 
-async function secretProject(project: string, views: ContainerView[]) {
+async function secretProject(project: string) {
   const [compose, values] = await Promise.all([appliedCompose(project), appliedValueNames(project)]);
   const stored = new Set(secretStore().list(project).map((secret) => secret.name));
   return {
     project,
-    needsRedeploy: await needsRedeploy(project, views),
     missing: [...composeReferences(compose)].filter(([name, reference]) => reference.required && !stored.has(name) && !values.has(name)).map(([name]) => name),
   };
 }
@@ -167,7 +166,7 @@ async function secretsApi(user: User, request: http.IncomingMessage, route: stri
     await requireOwnerNow(request);
     const views = await containers();
     const slugs = new Set([...secrets.projects(), ...views.map((view) => view.project)].filter((slug) => projectPattern.test(slug) && slug !== 'console' && slug !== 'other'));
-    return { projects: await Promise.all([...slugs].sort().map((slug) => secretProject(slug, views))), secrets: secrets.list() };
+    return { projects: await Promise.all([...slugs].sort().map((slug) => secretProject(slug))), secrets: secrets.list() };
   }
   const match = /^(GET|POST) \/api\/secrets\/([a-z0-9-]+)(?:\/([A-Z_][A-Z0-9_]*|import|delete))?(?:\/(reveal|restore))?$/.exec(route);
   if (!match) {
@@ -176,7 +175,7 @@ async function secretsApi(user: User, request: http.IncomingMessage, route: stri
   const [, method, project, target, action] = match;
   await requireNow(request, user, `secrets:${project}`);
   if (method === 'GET' && !target) {
-    return { project: await secretProject(project, await containers()), secrets: secrets.list(project) };
+    return { project: await secretProject(project), secrets: secrets.list(project) };
   }
   if (method === 'GET' && !action && /^[A-Z_]/.test(target)) {
     return { ...secrets.detail(project, target), file: `${project}/compose.yaml`, usage: composeReferences(await appliedCompose(project)).get(target)?.lines ?? [] };
