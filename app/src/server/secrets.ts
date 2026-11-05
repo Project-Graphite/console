@@ -1,9 +1,7 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
-import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { config } from './config.ts';
 import { Refusal } from './refusal.ts';
 
 export const projectPattern = /^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$/;
@@ -128,15 +126,6 @@ export function composeReferences(text: string) {
     }
   });
   return references;
-}
-
-export async function appliedCompose(project: string) {
-  return readFile(path.join(config.hostRoot, config.graphiteHome, project, 'compose.yaml'), 'utf8').catch((error: NodeJS.ErrnoException) => {
-    if (error.code === 'ENOENT') {
-      return '';
-    }
-    throw error;
-  });
 }
 
 export class SecretStore {

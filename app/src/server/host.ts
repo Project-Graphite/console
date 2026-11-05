@@ -39,7 +39,7 @@ export async function hostStats() {
     cpus: os.cpus().length,
     load: load.split(' ').slice(0, 3).map(Number),
     uptime: Number(uptime.split(' ')[0]),
-    disk: { used: (disk.blocks - disk.bfree) * disk.bsize, total: disk.blocks * disk.bsize },
+    disk: { used: (disk.blocks - disk.bfree) * disk.bsize, total: (disk.blocks - disk.bfree + disk.bavail) * disk.bsize },
     ...meminfo(memory),
   };
 }

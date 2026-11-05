@@ -10,11 +10,12 @@ import { config } from './config.ts';
 import { docker } from './docker.ts';
 import { docs } from './docs.ts';
 import { History, projectTotals, ranges, type Range } from './history.ts';
-import { collect, containers, diskUsage, projects, refresh, snapshot, type ContainerView } from './inventory.ts';
+import { collect, containers, diskUsage, projects, refresh, refreshDisk, snapshot, type ContainerView } from './inventory.ts';
 import { monitor } from './monitor.ts';
 import { open, openSocket, parseOpen } from './proxy.ts';
 import { Refusal } from './refusal.ts';
-import { appliedCompose, composeReferences, parseKeys, projectPattern, SecretStore } from './secrets.ts';
+import { appliedAt, appliedCompose, appliedValueNames, redeployStatus, startRedeploy } from './rollout.ts';
+import { composeReferences, parseKeys, projectPattern, SecretStore } from './secrets.ts';
 import { downloadLogs, logs, terminal } from './terminal.ts';
 
 const history = new History(config.dataDir);
@@ -143,18 +144,19 @@ function secretStore() {
   return store;
 }
 
-function needsRedeploy(project: string, views: ContainerView[]) {
+async function needsRedeploy(project: string, views: ContainerView[]) {
   const changed = store?.changedAt(project) ?? null;
   const created = views.filter((view) => view.project === project).map((view) => view.created);
-  return changed !== null && created.length > 0 && changed > Math.max(...created);
+  return changed !== null && created.length > 0 && changed > Math.max(...created, (await appliedAt(project)) ?? 0);
 }
 
 async function secretProject(project: string, views: ContainerView[]) {
+  const [compose, values] = await Promise.all([appliedCompose(project), appliedValueNames(project)]);
   const stored = new Set(secretStore().list(project).map((secret) => secret.name));
   return {
     project,
-    needsRedeploy: needsRedeploy(project, views),
-    missing: [...composeReferences(await appliedCompose(project))].filter(([name, reference]) => reference.required && !stored.has(name)).map(([name]) => name),
+    needsRedeploy: await needsRedeploy(project, views),
+    missing: [...composeReferences(compose)].filter(([name, reference]) => reference.required && !stored.has(name) && !values.has(name)).map(([name]) => name),
   };
 }
 
@@ -166,7 +168,7 @@ async function secretsApi(user: User, request: http.IncomingMessage, route: stri
     const slugs = new Set([...secrets.projects(), ...views.map((view) => view.project)].filter((slug) => projectPattern.test(slug) && slug !== 'console' && slug !== 'other'));
     return { projects: await Promise.all([...slugs].sort().map((slug) => secretProject(slug, views))), secrets: secrets.list() };
   }
-  const match = /^(GET|POST) \/api\/secrets\/([a-z0-9-]+)(?:\/([A-Z_][A-Z0-9_]*|import|delete|redeploy))?(?:\/(reveal|restore))?$/.exec(route);
+  const match = /^(GET|POST) \/api\/secrets\/([a-z0-9-]+)(?:\/([A-Z_][A-Z0-9_]*|import|delete))?(?:\/(reveal|restore))?$/.exec(route);
   if (!match) {
     throw new Refusal(404, 'Not found.');
   }
@@ -203,21 +205,6 @@ async function secretsApi(user: User, request: http.IncomingMessage, route: stri
       throw new Refusal(409, `${project}/compose.yaml still requires ${required.join(', ')}.`);
     }
     secrets.remove(project, names, user.login);
-    return { ok: true };
-  }
-  if (target === 'redeploy' && !action) {
-    await requireNow(request, user, `project:${project}`);
-    const response = await fetch(`${config.agentUrl}/reapply`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${secrets.value('agent', 'CONSOLE_TOKEN')}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: project, by: user.login }),
-      signal: AbortSignal.timeout(660_000),
-    });
-    if (!response.ok) {
-      throw new Refusal(502, `The agent answered ${response.status}: ${await response.text()}`);
-    }
-    secrets.audit(user.login, 'redeploy', project, null);
-    await refresh();
     return { ok: true };
   }
   if (!action) {
@@ -273,7 +260,7 @@ async function api(user: User, request: http.IncomingMessage, url: URL) {
         buildCache: usage.buildCache,
         volumes: usage.volumes.reduce((sum, volume) => sum + Math.max(0, volume.size), 0),
       },
-      projects: list.map((project) => ({ ...project, needsRedeploy: needsRedeploy(project.slug, project.containers) })),
+      projects: await Promise.all(list.map(async (project) => ({ ...project, needsRedeploy: await needsRedeploy(project.slug, project.containers) }))),
     };
   }
   const project = /^GET \/api\/projects\/([a-z0-9-]+)$/.exec(route);
@@ -340,8 +327,12 @@ async function api(user: User, request: http.IncomingMessage, url: URL) {
   }
   if (route === 'POST /api/prune') {
     await requireNow(request, user, 'area:images');
-    const result = await docker<{ SpaceReclaimed: number }>('POST', `/images/prune?filters=${encodeURIComponent('{"dangling":["true"]}')}`);
-    return { reclaimed: result.SpaceReclaimed };
+    const result = await docker<{ SpaceReclaimed: number; ImagesDeleted: { Deleted?: string }[] | null }>(
+      'POST',
+      `/images/prune?filters=${encodeURIComponent('{"dangling":["false"]}')}`,
+    );
+    await refreshDisk();
+    return { reclaimed: result.SpaceReclaimed, removed: (result.ImagesDeleted ?? []).filter((entry) => entry.Deleted).length };
   }
   const action = /^POST \/api\/containers\/([0-9a-f]{12,64})\/(start|stop|restart)$/.exec(route);
   if (action) {
@@ -349,6 +340,16 @@ async function api(user: User, request: http.IncomingMessage, url: URL) {
     await requireNow(request, user, `project:${container.project}`);
     await docker('POST', `/containers/${container.id}/${action[2]}`);
     await refresh();
+    return { ok: true };
+  }
+  const redeploy = /^(GET|POST) \/api\/projects\/([a-z0-9-]+)\/redeploy$/.exec(route);
+  if (redeploy) {
+    if (redeploy[1] === 'GET') {
+      return redeployStatus(redeploy[2]);
+    }
+    await requireNow(request, user, `project:${redeploy[2]}`);
+    await startRedeploy(redeploy[2]);
+    store?.audit(user.login, 'redeploy', redeploy[2], null);
     return { ok: true };
   }
   const wake = /^POST \/api\/projects\/([a-z0-9-]+)\/wake$/.exec(route);
@@ -375,8 +376,6 @@ async function serveFile(response: http.ServerResponse, pathname: string) {
       'Content-Type': types[extension] ?? 'application/octet-stream',
       'Cache-Control': name.startsWith('assets/') ? 'public, max-age=31536000, immutable' : 'no-cache',
       'Content-Security-Policy': policy,
-      'X-Content-Type-Options': 'nosniff',
-      'Referrer-Policy': 'same-origin',
     });
     response.end(file);
   } catch {
@@ -384,8 +383,26 @@ async function serveFile(response: http.ServerResponse, pathname: string) {
   }
 }
 
+const headers = {
+  'X-Content-Type-Options': 'nosniff',
+  'X-Frame-Options': 'DENY',
+  'Referrer-Policy': 'same-origin',
+  'Cross-Origin-Opener-Policy': 'same-origin',
+  'Cross-Origin-Resource-Policy': 'same-origin',
+  'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=(), usb=()',
+  ...(config.production ? { 'Strict-Transport-Security': 'max-age=63072000; includeSubDomains' } : {}),
+};
+
+function sameOrigin(request: http.IncomingMessage) {
+  const origin = request.headers.origin;
+  return origin ? origin === new URL(config.appUrl).origin : request.headers['sec-fetch-site'] === 'same-origin';
+}
+
 async function handle(request: http.IncomingMessage, response: http.ServerResponse) {
   const url = new URL(request.url ?? '/', config.appUrl);
+  for (const [name, value] of Object.entries(headers)) {
+    response.setHeader(name, value);
+  }
   if (url.pathname === '/healthz') {
     response.writeHead(200).end('ok');
     return;
@@ -422,7 +439,7 @@ async function handle(request: http.IncomingMessage, response: http.ServerRespon
     return download(response, archive[1], archive[2], user.login);
   }
   if (url.pathname.startsWith('/api/')) {
-    if (request.method === 'POST' && request.headers.origin && request.headers.origin !== new URL(config.appUrl).origin) {
+    if (request.method !== 'GET' && !sameOrigin(request)) {
       throw new Refusal(403, 'Cross-origin requests are refused.');
     }
     const importing = /^\/api\/backups\/([a-z0-9][a-z0-9_-]*)\/import$/.exec(url.pathname);

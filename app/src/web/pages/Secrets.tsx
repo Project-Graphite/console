@@ -18,6 +18,7 @@ import {
 } from '@project-graphite/ui';
 import { useEffect, useState } from 'react';
 import { can, post, type Secret, type SecretDetail, type SecretProject, type SecretType, type User } from '../api';
+import { Redeploy } from '../components/Redeploy';
 import { Segmented } from '../components/Segmented';
 import { usePoll } from '../usePoll';
 
@@ -27,28 +28,6 @@ const typeOptions: SelectOption<SecretType>[] = [
 ];
 
 const when = (at: number) => timeAgo(new Date(at).toISOString());
-
-function Redeploy({ project, onDone }: { project: string; onDone: () => void }) {
-  const [message, setMessage] = useState<string>();
-  const redeploy = () => {
-    setMessage('Redeploying…');
-    post(`/api/secrets/${project}/redeploy`).then(
-      () => {
-        setMessage('Redeployed.');
-        onDone();
-      },
-      (error: Error) => setMessage(error.message),
-    );
-  };
-  return (
-    <span className="flex items-center gap-2">
-      <Button onClick={redeploy} size="small">
-        Redeploy
-      </Button>
-      {message && <span className="mono-sm text-muted">{message}</span>}
-    </span>
-  );
-}
 
 function SecretSheet({ prefix, secret, onClose, onSaved }: { prefix: string; secret?: Secret; onClose: () => void; onSaved: () => void }) {
   const [mode, setMode] = useState<'Create' | 'Import'>('Create');
