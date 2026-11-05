@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { Readable } from 'node:stream';
 import { afterEach, describe, expect, it } from 'vitest';
-import { listBackups, order, requests, upload } from '../src/server/backups.ts';
+import { backupConditions, defaultSchedule, listBackups, nextRun, order, readSchedule, requests, upload, writeSchedule } from '../src/server/backups.ts';
 
 const directories: string[] = [];
 
@@ -21,6 +21,37 @@ function root() {
 }
 
 const summary = (project: string, stamp: string) => JSON.stringify({ project, stamp, started: '', ok: true, errors: [], items: [] });
+
+describe('schedule', () => {
+  const at = (text: string) => Date.parse(text);
+
+  it('runs at the anchor hour and every period after it, in UTC', () => {
+    expect(nextRun(defaultSchedule, at('2026-11-05T02:59:00Z'))).toBe(at('2026-11-05T03:00:00Z'));
+    expect(nextRun(defaultSchedule, at('2026-11-05T03:00:01Z'))).toBe(at('2026-11-06T03:00:00Z'));
+    expect(nextRun({ ...defaultSchedule, everyHours: 6 }, at('2026-11-05T10:00:00Z'))).toBe(at('2026-11-05T15:00:00Z'));
+  });
+
+  it('keeps a valid schedule, refuses an invalid one and defaults to daily at 03:00 for 14 days', async () => {
+    const base = root();
+    expect(await readSchedule(base)).toEqual(defaultSchedule);
+    await writeSchedule({ enabled: false, everyHours: 12, hour: 1, keepDays: 30 }, 'amr', base);
+    expect(await readSchedule(base)).toEqual({ enabled: false, everyHours: 12, hour: 1, keepDays: 30 });
+    await expect(writeSchedule({ enabled: true, everyHours: 5, hour: 1, keepDays: 30 }, 'amr', base)).rejects.toThrow('A schedule is');
+    await expect(writeSchedule({ enabled: true, everyHours: 24, hour: 24, keepDays: 30 }, 'amr', base)).rejects.toThrow('A schedule is');
+  });
+
+  it('raises no late-backup alert while backups are off, and allows the whole period plus two hours', async () => {
+    const base = root();
+    mkdirSync(path.join(base, 'strata'));
+    writeFileSync(path.join(base, 'strata', '20261101T030000Z.json'), summary('strata', '20261101T030000Z'));
+    const now = Date.parse('2026-11-03T04:00:00Z');
+    expect((await backupConditions(now, base)).map((entry) => entry.key)).toEqual(['backup:strata']);
+    await writeSchedule({ enabled: true, everyHours: 72, hour: 3, keepDays: 14 }, 'amr', base);
+    expect(await backupConditions(now, base)).toEqual([]);
+    await writeSchedule({ enabled: false, everyHours: 24, hour: 3, keepDays: 14 }, 'amr', base);
+    expect(await backupConditions(Date.parse('2026-11-30T00:00:00Z'), base)).toEqual([]);
+  });
+});
 
 describe('backups', () => {
   it('lists every project and its runs, newest first, ignoring stray files', async () => {

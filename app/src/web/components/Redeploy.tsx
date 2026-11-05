@@ -1,61 +1,33 @@
-import { Button } from '@project-graphite/ui';
-import { useEffect, useState } from 'react';
 import { get, post } from '../api';
+import { ActionButton } from './ActionButton';
 
 interface Status {
   state: 'none' | 'running' | 'done' | 'failed';
   log: string;
 }
 
-export function Redeploy({ project, onDone }: { project: string; onDone: () => void }) {
-  const [watching, setWatching] = useState(false);
-  const [status, setStatus] = useState<Status>();
-  const [message, setMessage] = useState<string>();
+const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-  useEffect(() => {
-    if (!watching) {
+async function redeploy(project: string) {
+  await post(`/api/projects/${project}/redeploy`);
+  for (const deadline = Date.now() + 16 * 60_000; Date.now() < deadline; ) {
+    await pause(3000);
+    const status = await get<Status>(`/api/projects/${project}/redeploy`).catch(() => undefined);
+    if (status?.state === 'done') {
       return;
     }
-    const timer = setInterval(() => {
-      get<Status>(`/api/projects/${project}/redeploy`).then(
-        (next) => {
-          setStatus(next);
-          setMessage(undefined);
-          if (next.state === 'done' || next.state === 'failed') {
-            setWatching(false);
-            onDone();
-          }
-        },
-        () => setMessage('Waiting for the console to answer…'),
-      );
-    }, 3000);
-    return () => clearInterval(timer);
-  }, [watching, project, onDone]);
+    if (status?.state === 'failed') {
+      throw new Error(status.log.split('\n').slice(-8).join('\n') || 'The redeploy failed.');
+    }
+  }
+  throw new Error('The redeploy did not finish within 16 minutes.');
+}
 
-  const start = () => {
-    setStatus(undefined);
-    setMessage('Starting…');
-    post(`/api/projects/${project}/redeploy`).then(
-      () => {
-        setMessage(undefined);
-        setStatus({ state: 'running', log: '' });
-        setWatching(true);
-      },
-      (error: Error) => setMessage(error.message),
-    );
-  };
-
+export function Redeploy({ project, onDone }: { project: string; onDone: () => void }) {
   return (
-    <span className="flex flex-col gap-1">
-      <span className="flex items-center gap-2">
-        <Button disabled={watching} onClick={start} size="small">
-          Redeploy
-        </Button>
-        <span className="mono-sm text-muted">
-          {message ?? (status?.state === 'running' ? 'Redeploying…' : status?.state === 'done' ? 'Redeployed.' : status?.state === 'failed' ? 'The redeploy failed:' : '')}
-        </span>
-      </span>
-      {status?.state === 'failed' && status.log && <pre className="mono-sm max-h-48 overflow-auto whitespace-pre-wrap text-faint">{status.log}</pre>}
-    </span>
+    <ActionButton
+      labels={{ idle: 'Redeploy', busy: 'Redeploying…', done: 'Redeployed', failed: 'Redeploy failed' }}
+      run={() => redeploy(project).finally(onDone)}
+    />
   );
 }

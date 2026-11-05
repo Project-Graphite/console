@@ -1,4 +1,4 @@
-import { readFile, stat } from 'node:fs/promises';
+import { readFile, stat, utimes, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { config } from './config.ts';
 import { Demuxer, docker, stream } from './docker.ts';
@@ -47,7 +47,7 @@ export async function onHost(command: string[]) {
 const unit = (project: string) => `graphite-redeploy-${project}`;
 
 export async function redeployStatus(project: string) {
-  const { output } = await onHost(['systemctl', 'show', unit(project), '--property=ActiveState,SubState,InvocationID,StateChangeTimestamp']);
+  const { output } = await onHost(['systemctl', 'show', unit(project), '--timestamp=unix', '--property=ActiveState,SubState,InvocationID,StateChangeTimestamp']);
   const properties = Object.fromEntries(output.split('\n').map((line) => [line.slice(0, line.indexOf('=')), line.slice(line.indexOf('=') + 1)]));
   const state =
     properties.ActiveState === 'activating' || properties.SubState === 'running'
@@ -61,7 +61,13 @@ export async function redeployStatus(project: string) {
     state !== 'none' && properties.InvocationID
       ? (await onHost(['journalctl', `_SYSTEMD_INVOCATION_ID=${properties.InvocationID}`, '--no-pager', '--output=cat', '--lines=30'])).output
       : '';
-  return { state, log, at: properties.StateChangeTimestamp || null };
+  const changed = Number(properties.StateChangeTimestamp?.replace(/^@/, '')) * 1000 || null;
+  if (state === 'done' && changed && ((await appliedAt(project)) ?? 0) < changed) {
+    const marker = applied(project, '.applied');
+    await writeFile(marker, '', { flag: 'a' });
+    await utimes(marker, changed / 1000, changed / 1000);
+  }
+  return { state, log, at: changed };
 }
 
 export async function startRedeploy(project: string) {

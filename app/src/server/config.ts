@@ -27,6 +27,8 @@ export const config = {
   dockerSocket: process.env.DOCKER_SOCKET ?? '/var/run/docker.sock',
   hostRoot: process.env.HOST_ROOT ?? '/proc/1/root',
   dataDir: process.env.DATA_DIR ?? '/data',
+  logsDir: process.env.LOGS_DIR ?? '/logs',
+  logsKeepDays: Number(process.env.LOGS_KEEP_DAYS ?? 7),
   sablierUrl: process.env.SABLIER_URL ?? 'http://sablier:10000',
   self: process.env.HOSTNAME ?? '',
   sshTarget: process.env.SSH_TARGET ?? 'ubuntu@localhost',

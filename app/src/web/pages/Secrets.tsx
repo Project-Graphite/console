@@ -1,13 +1,16 @@
 import Alert from '@mui/material/Alert';
+import MuiIconButton from '@mui/material/IconButton';
 import MuiLink from '@mui/material/Link';
-import MuiTextField from '@mui/material/TextField';
+import Tooltip from '@mui/material/Tooltip';
 import {
   Button,
   Checkbox,
   ConfirmDialog,
   Dialog,
   ErrorState,
+  Icon,
   PageHeader,
+  Popover,
   Select,
   TagChip,
   Tabs,
@@ -17,8 +20,7 @@ import {
   type SelectOption,
 } from '@project-graphite/ui';
 import { useEffect, useState } from 'react';
-import { can, post, type Secret, type SecretDetail, type SecretProject, type SecretType, type User } from '../api';
-import { Redeploy } from '../components/Redeploy';
+import { post, type Secret, type SecretDetail, type SecretProject, type SecretType, type User } from '../api';
 import { Segmented } from '../components/Segmented';
 import { usePoll } from '../usePoll';
 
@@ -28,6 +30,73 @@ const typeOptions: SelectOption<SecretType>[] = [
 ];
 
 const when = (at: number) => timeAgo(new Date(at).toISOString());
+
+interface Filters {
+  projects: string[];
+  types: SecretType[];
+  attention: boolean;
+}
+
+const active = (filters: Filters) => filters.projects.length + filters.types.length + Number(filters.attention);
+
+function CopyGlyph() {
+  return (
+    <svg aria-hidden="true" fill="none" height="16" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" viewBox="0 0 24 24" width="16">
+      <rect height="13" rx="2" width="13" x="9" y="9" />
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+    </svg>
+  );
+}
+
+function SecretFilters({ filters, projects, onChange }: { filters: Filters; projects: string[]; onChange: (next: Filters) => void }) {
+  const flip = <T,>(list: T[], value: T) => (list.includes(value) ? list.filter((entry) => entry !== value) : [...list, value]);
+  const count = active(filters);
+  return (
+    <span className="flex flex-wrap items-center gap-2">
+      <Popover label="Filter the secrets" panelClassName="w-64 space-y-3 p-3" trigger={count ? `Filters · ${count}` : 'Filters'} triggerLabel="Filters" triggerVariant="secondary">
+        {() => (
+          <>
+            {projects.length > 0 && (
+              <fieldset className="space-y-1">
+                <legend className="mono-sm text-muted">Project</legend>
+                {projects.map((slug) => (
+                  <Checkbox checked={filters.projects.includes(slug)} key={slug} label={slug} onChange={() => onChange({ ...filters, projects: flip(filters.projects, slug) })} />
+                ))}
+              </fieldset>
+            )}
+            <fieldset className="space-y-1">
+              <legend className="mono-sm text-muted">Type</legend>
+              {typeOptions.map((option) => (
+                <Checkbox
+                  checked={filters.types.includes(option.value)}
+                  key={option.value}
+                  label={option.label}
+                  onChange={() => onChange({ ...filters, types: flip(filters.types, option.value) })}
+                />
+              ))}
+            </fieldset>
+            <fieldset className="space-y-1">
+              <legend className="mono-sm text-muted">Status</legend>
+              <Checkbox checked={filters.attention} label="Missing a required secret" onChange={() => onChange({ ...filters, attention: !filters.attention })} />
+            </fieldset>
+            {count > 0 && (
+              <Button onClick={() => onChange({ projects: [], types: [], attention: false })} size="small" variant="text">
+                Clear filters
+              </Button>
+            )}
+          </>
+        )}
+      </Popover>
+      {filters.projects.map((slug) => (
+        <TagChip key={slug} label={slug} onRemove={() => onChange({ ...filters, projects: flip(filters.projects, slug) })} />
+      ))}
+      {filters.types.map((type) => (
+        <TagChip key={type} label={type} onRemove={() => onChange({ ...filters, types: flip(filters.types, type) })} />
+      ))}
+      {filters.attention && <TagChip label="missing a secret" onRemove={() => onChange({ ...filters, attention: false })} />}
+    </span>
+  );
+}
 
 function SecretSheet({ prefix, secret, onClose, onSaved }: { prefix: string; secret?: Secret; onClose: () => void; onSaved: () => void }) {
   const [mode, setMode] = useState<'Create' | 'Import'>('Create');
@@ -118,13 +187,13 @@ function SecretSheet({ prefix, secret, onClose, onSaved }: { prefix: string; sec
   );
 }
 
-export function SecretList({ project, user }: { project?: string; user: User }) {
+export function SecretList({ project }: { project?: string }) {
   const { data, error, reload } = usePoll<{ projects?: SecretProject[]; project?: SecretProject; secrets: Secret[] }>(
     project ? `/api/secrets/${project}` : '/api/secrets',
     30_000,
   );
-  const [prefix, setPrefix] = useState(project ? `/${project}/` : '/');
-  const [filter, setFilter] = useState('');
+  const [filters, setFilters] = useState<Filters>({ projects: [], types: [], attention: false });
+  const [collapsed, setCollapsed] = useState<string[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
   const [creating, setCreating] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -135,13 +204,17 @@ export function SecretList({ project, user }: { project?: string; user: User }) 
   if (!data) {
     return null;
   }
-  const query = filter.trim().toLowerCase();
+  const all = data.projects ?? [data.project!];
+  const groups = all.filter(
+    (entry) =>
+      (!filters.projects.length || filters.projects.includes(entry.project)) &&
+      (!filters.attention || entry.missing.length > 0) &&
+      (!filters.types.length || data.secrets.some((secret) => secret.project === entry.project && filters.types.includes(secret.type))),
+  );
   const rows = data.secrets.filter(
-    (secret) => `/${secret.project}/${secret.name}`.startsWith(prefix) && `${secret.name} ${secret.description}`.toLowerCase().includes(query),
+    (secret) => groups.some((entry) => entry.project === secret.project) && (!filters.types.length || filters.types.includes(secret.type)),
   );
-  const groups = (data.projects ?? [data.project!]).filter(
-    (entry) => rows.some((secret) => secret.project === entry.project) || (!query && `/${entry.project}/`.startsWith(prefix)),
-  );
+  const prefix = project ? `/${project}/` : filters.projects.length === 1 ? `/${filters.projects[0]}/` : '/';
   const toggle = (path: string) => setSelected(selected.includes(path) ? selected.filter((entry) => entry !== path) : [...selected, path]);
   const copy = () =>
     navigator.clipboard.writeText(selected.join('\n')).then(
@@ -159,20 +232,23 @@ export function SecretList({ project, user }: { project?: string; user: User }) 
   return (
     <section className="stat-card space-y-3">
       <div className="flex flex-wrap items-center gap-2">
-        {!project && (
-          <MuiTextField className="w-56" label="Path prefix" onChange={(event) => setPrefix(event.target.value || '/')} size="small" value={prefix} />
-        )}
-        <MuiTextField className="w-56" label="Filter" onChange={(event) => setFilter(event.target.value)} size="small" type="search" value={filter} />
-        <Button icon="plus" onClick={() => setCreating(true)} size="small" variant="primary">
-          Create
-        </Button>
-        <Button disabled={!selected.length} onClick={() => void copy()} size="small">
-          Copy names
-        </Button>
-        <Button disabled={!selected.length} onClick={() => setDeleting(true)} size="small" variant="danger">
-          Delete
-        </Button>
+        <SecretFilters filters={filters} onChange={setFilters} projects={project ? [] : all.map((entry) => entry.project)} />
         {message && <span className="mono-sm text-muted">{message}</span>}
+        <span className="ml-auto flex items-center gap-2">
+          <Tooltip title="Copy the selected names">
+            <span>
+              <MuiIconButton aria-label="Copy the selected names" disabled={!selected.length} onClick={() => void copy()} size="small">
+                <CopyGlyph />
+              </MuiIconButton>
+            </span>
+          </Tooltip>
+          <Button disabled={!selected.length} onClick={() => setDeleting(true)} size="small" variant="danger">
+            Delete
+          </Button>
+          <Button icon="plus" onClick={() => setCreating(true)} size="small" variant="primary">
+            Create
+          </Button>
+        </span>
       </div>
       <div className="overflow-x-auto">
         <table className="data-table">
@@ -192,15 +268,21 @@ export function SecretList({ project, user }: { project?: string; user: User }) 
               <tr>
                 <td colSpan={7}>
                   <span className="flex flex-wrap items-center gap-2">
-                    <span className="mono-sm">/{entry.project}/</span>
-                    {entry.needsRedeploy && <TagChip color="red" label="needs redeploy" />}
-                    {entry.needsRedeploy && can(user, `project:${entry.project}`) && <Redeploy onDone={() => void reload()} project={entry.project} />}
+                    <button
+                      aria-expanded={!collapsed.includes(entry.project)}
+                      className="mono-sm flex items-center gap-1 text-ink"
+                      onClick={() => setCollapsed(collapsed.includes(entry.project) ? collapsed.filter((slug) => slug !== entry.project) : [...collapsed, entry.project])}
+                      type="button"
+                    >
+                      <Icon name={collapsed.includes(entry.project) ? 'chevron-right' : 'chevron-down'} size={14} />/{entry.project}/
+                      <span className="text-faint">· {rows.filter((secret) => secret.project === entry.project).length}</span>
+                    </button>
                     {entry.missing.length > 0 && <TagChip color="red" label={`required by compose, missing: ${entry.missing.join(', ')}`} />}
                   </span>
                 </td>
               </tr>
               {rows
-                .filter((secret) => secret.project === entry.project)
+                .filter((secret) => secret.project === entry.project && !collapsed.includes(entry.project))
                 .map((secret) => {
                   const path = `/${secret.project}/${secret.name}`;
                   return (
@@ -228,7 +310,7 @@ export function SecretList({ project, user }: { project?: string; user: User }) 
           ))}
         </table>
       </div>
-      {rows.length === 0 && <p className="mono-sm text-faint">No secret under {prefix}{query && ` matches “${filter}”`}.</p>}
+      {rows.length === 0 && <p className="mono-sm text-faint">{active(filters) ? 'No secret matches these filters.' : 'No secret yet.'}</p>}
       {creating && (
         <SecretSheet
           onClose={() => setCreating(false)}
@@ -248,7 +330,7 @@ export function SecretList({ project, user }: { project?: string; user: User }) 
   );
 }
 
-export function Secrets({ user }: { user: User }) {
+export function Secrets() {
   return (
     <div className="space-y-6">
       <PageHeader title="Secrets">
@@ -257,7 +339,7 @@ export function Secrets({ user }: { user: User }) {
           deploys.
         </span>
       </PageHeader>
-      <SecretList user={user} />
+      <SecretList />
     </div>
   );
 }

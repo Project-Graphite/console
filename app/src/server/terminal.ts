@@ -1,20 +1,18 @@
 import type http from 'node:http';
 import type { WebSocket } from 'ws';
 import { config } from './config.ts';
-import { Demuxer, docker, LogLines, stream, upgrade, type LogLine } from './docker.ts';
+import { Demuxer, docker, LogLines, stream, upgrade } from './docker.ts';
 
 const shell = ['/bin/sh', '-c', 'if command -v bash >/dev/null; then exec bash; else exec sh; fi'];
-const hostShell = ['nsenter', '--target', '1', '--all', '--', '/bin/bash', '-l'];
 
-export async function terminal(socket: WebSocket, target: 'host' | { container: string }) {
-  const container = target === 'host' ? config.self : target.container;
-  const { Id: exec } = await docker<{ Id: string }>('POST', `/containers/${container}/exec`, {
+export async function terminal(socket: WebSocket, target: { host: string[] } | { container: string }) {
+  const { Id: exec } = await docker<{ Id: string }>('POST', `/containers/${'host' in target ? config.self : target.container}/exec`, {
     AttachStdin: true,
     AttachStdout: true,
     AttachStderr: true,
     Tty: true,
     Env: ['TERM=xterm-256color'],
-    Cmd: target === 'host' ? hostShell : shell,
+    Cmd: 'host' in target ? target.host : shell,
   });
   const pipe = await upgrade(`/exec/${exec}/start`, { Detach: false, Tty: true });
 
@@ -86,27 +84,6 @@ export async function logs(socket: WebSocket, container: string, params: URLSear
     clearInterval(heartbeat);
     output.destroy();
   });
-}
-
-export async function searchLogs(containers: { id: string; name: string }[], text: string, since: number, limit = 500) {
-  const needle = text.toLowerCase();
-  const found: (LogLine & { container: string })[] = [];
-  await Promise.all(
-    containers.map(async (container) => {
-      const { output, read } = await readLogs(container.id, `follow=0&tail=20000&since=${Math.floor(since / 1000)}`);
-      let matches = 0;
-      for await (const chunk of output) {
-        for (const line of read(chunk as Buffer)) {
-          if (matches < limit && line.text.toLowerCase().includes(needle)) {
-            found.push({ ...line, container: container.name });
-            matches += 1;
-          }
-        }
-      }
-    }),
-  );
-  found.sort((a, b) => b.time.localeCompare(a.time));
-  return { lines: found.slice(0, limit), more: found.length > limit };
 }
 
 export async function downloadLogs(response: http.ServerResponse, container: { id: string; name: string }) {

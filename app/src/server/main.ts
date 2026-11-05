@@ -5,7 +5,7 @@ import { WebSocketServer } from 'ws';
 import { Access, permits, scopePattern } from './access.ts';
 import { Alerts, ruleKinds, type RuleKind } from './alerts.ts';
 import { authenticate, callback, githubToken, login, logout, organisationMembers, roleNow, sessionMs, type Role, type User } from './auth.ts';
-import { download, listBackups, order, requests, upload } from './backups.ts';
+import { download, listBackups, nextRun, order, readSchedule, requests, upload, writeSchedule } from './backups.ts';
 import { config } from './config.ts';
 import { docker } from './docker.ts';
 import { docs } from './docs.ts';
@@ -17,14 +17,19 @@ import { open, openSocket, parseOpen } from './proxy.ts';
 import { Refusal } from './refusal.ts';
 import { appliedAt, appliedCompose, appliedValueNames, redeployStatus, startRedeploy } from './rollout.ts';
 import { composeReferences, parseKeys, projectPattern, SecretStore } from './secrets.ts';
-import { downloadLogs, logs, searchLogs, terminal } from './terminal.ts';
+import { LogStore } from './logstore.ts';
+import { hostShell, type ShellMode } from './shell.ts';
+import { createVolume, downloadFile, listFiles, removeVolume } from './volumes.ts';
+import { downloadLogs, logs, terminal } from './terminal.ts';
 
 const history = new History(config.dataDir);
 const access = new Access(config.dataDir);
 const alerts = new Alerts(config.dataDir);
 const store = config.secretsKey ? new SecretStore(config.dataDir, parseKeys(config.secretsKey), path.join(config.hostRoot, 'etc/graphite')) : undefined;
+const logStore = new LogStore(config.logsDir, config.logsKeepDays);
 collect(history);
 monitor(alerts);
+logStore.start(containers);
 
 const types: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -151,12 +156,11 @@ async function needsRedeploy(project: string, views: ContainerView[]) {
   return changed !== null && created.length > 0 && changed > Math.max(...created, (await appliedAt(project)) ?? 0);
 }
 
-async function secretProject(project: string, views: ContainerView[]) {
+async function secretProject(project: string) {
   const [compose, values] = await Promise.all([appliedCompose(project), appliedValueNames(project)]);
   const stored = new Set(secretStore().list(project).map((secret) => secret.name));
   return {
     project,
-    needsRedeploy: await needsRedeploy(project, views),
     missing: [...composeReferences(compose)].filter(([name, reference]) => reference.required && !stored.has(name) && !values.has(name)).map(([name]) => name),
   };
 }
@@ -167,7 +171,7 @@ async function secretsApi(user: User, request: http.IncomingMessage, route: stri
     await requireOwnerNow(request);
     const views = await containers();
     const slugs = new Set([...secrets.projects(), ...views.map((view) => view.project)].filter((slug) => projectPattern.test(slug) && slug !== 'console' && slug !== 'other'));
-    return { projects: await Promise.all([...slugs].sort().map((slug) => secretProject(slug, views))), secrets: secrets.list() };
+    return { projects: await Promise.all([...slugs].sort().map((slug) => secretProject(slug))), secrets: secrets.list() };
   }
   const match = /^(GET|POST) \/api\/secrets\/([a-z0-9-]+)(?:\/([A-Z_][A-Z0-9_]*|import|delete))?(?:\/(reveal|restore))?$/.exec(route);
   if (!match) {
@@ -176,7 +180,7 @@ async function secretsApi(user: User, request: http.IncomingMessage, route: stri
   const [, method, project, target, action] = match;
   await requireNow(request, user, `secrets:${project}`);
   if (method === 'GET' && !target) {
-    return { project: await secretProject(project, await containers()), secrets: secrets.list(project) };
+    return { project: await secretProject(project), secrets: secrets.list(project) };
   }
   if (method === 'GET' && !action && /^[A-Z_]/.test(target)) {
     return { ...secrets.detail(project, target), file: `${project}/compose.yaml`, usage: composeReferences(await appliedCompose(project)).get(target)?.lines ?? [] };
@@ -232,7 +236,13 @@ async function api(user: User, request: http.IncomingMessage, url: URL) {
     if (!user.owner) {
       throw new Refusal(403, 'Only organisation owners can do that.');
     }
-    return { projects: await listBackups(), requests: await requests() };
+    const [projects, schedule, recent] = await Promise.all([listBackups(), readSchedule(), requests()]);
+    return { projects, schedule, next: schedule.enabled ? nextRun(schedule, Date.now()) : null, requests: recent };
+  }
+  if (route === 'POST /api/backups/schedule') {
+    await requireOwnerNow(request);
+    await writeSchedule(await body(request), user.login);
+    return { ok: true };
   }
   const backup = /^POST \/api\/backups\/([a-z0-9][a-z0-9_-]*)\/(?:run|(\d{8}T\d{6}Z)\/restore)$/.exec(route);
   if (backup) {
@@ -272,15 +282,24 @@ async function api(user: User, request: http.IncomingMessage, url: URL) {
     await email('Test alert from the Graphite console', `${user.login} sent this test from ${config.appUrl}/#/alerts.`);
     return { ok: true };
   }
-  if (route === 'GET /api/logs/search') {
-    const text = (url.searchParams.get('q') ?? '').trim();
-    const window = { '15m': 900_000, '1h': 3600_000, '6h': 21_600_000, '24h': 86_400_000, '7d': 604_800_000 }[url.searchParams.get('since') ?? '1h'];
-    if (text.length < 2 || !window) {
-      throw new Refusal(400, 'Search for at least two characters over 15m, 1h, 6h, 24h or 7d.');
-    }
-    const project = url.searchParams.get('project');
-    const chosen = (await containers()).filter((container) => !project || container.project === project);
-    return searchLogs(chosen, text, Date.now() - window);
+  if (route === 'GET /api/logs') {
+    const list = (name: string) => url.searchParams.get(name)?.split(',').filter(Boolean);
+    const number = (name: string) => (url.searchParams.has(name) ? Number(url.searchParams.get(name)) : undefined);
+    const since = { '15m': 900_000, '1h': 3600_000, '6h': 21_600_000, '24h': 86_400_000, '7d': 604_800_000 }[url.searchParams.get('since') ?? ''];
+    return logStore.query({
+      projects: list('projects'),
+      containers: list('containers'),
+      streams: list('streams'),
+      levels: list('levels'),
+      text: url.searchParams.get('q')?.trim() || undefined,
+      from: since ? Date.now() - since : undefined,
+      before: number('before'),
+      after: number('after'),
+      limit: number('limit'),
+    });
+  }
+  if (route === 'GET /api/logs/sources') {
+    return { sources: logStore.sources(), ...logStore.stats(), keepDays: config.logsKeepDays };
   }
   if (route === 'GET /api/docs') {
     return docs();
@@ -361,6 +380,24 @@ async function api(user: User, request: http.IncomingMessage, url: URL) {
     access.grant(grant[1], scopes);
     closeRevoked(grant[1]);
     return { ok: true, scopes: access.scopes(grant[1]) };
+  }
+  if (route === 'POST /api/volumes') {
+    await requireOwnerNow(request);
+    await createVolume(((await body(request)) as { name?: unknown }).name);
+    await refreshDisk();
+    return { ok: true };
+  }
+  const volume = /^(GET|POST) \/api\/volumes\/([A-Za-z0-9][A-Za-z0-9_.-]*)\/(files|delete)$/.exec(route);
+  if (volume) {
+    await requireOwnerNow(request);
+    if (volume[1] === 'GET' && volume[3] === 'files') {
+      return listFiles(volume[2], url.searchParams.get('path') ?? '');
+    }
+    if (volume[1] === 'POST' && volume[3] === 'delete') {
+      await removeVolume(volume[2]);
+      await refreshDisk();
+      return { ok: true };
+    }
   }
   if (route === 'POST /api/prune') {
     await requireNow(request, user, 'area:images');
@@ -474,6 +511,11 @@ async function handle(request: http.IncomingMessage, response: http.ServerRespon
   if (logFile && request.method === 'GET') {
     return downloadLogs(response, await findContainer(logFile[1]));
   }
+  const volumeFile = /^\/api\/volumes\/([A-Za-z0-9][A-Za-z0-9_.-]*)\/file$/.exec(url.pathname);
+  if (volumeFile && request.method === 'GET') {
+    await requireOwnerNow(request);
+    return downloadFile(response, volumeFile[1], url.searchParams.get('path') ?? '');
+  }
   const archive = /^\/api\/backups\/([a-z0-9][a-z0-9_-]*)\/(\d{8}T\d{6}Z)\.tar$/.exec(url.pathname);
   if (archive && request.method === 'GET') {
     await requireOwnerNow(request);
@@ -527,8 +569,13 @@ server.on('upgrade', (request, socket, head) => {
       return openSocket(request, socket, head, target, url.search);
     }
     const found = url.pathname === '/ws/host' ? undefined : await findContainer(url.searchParams.get('container') ?? '');
-    const scope = url.pathname === '/ws/host' ? 'area:shell' : url.pathname === '/ws/terminal' ? `project:${found!.project}` : undefined;
+    const mode: ShellMode = url.searchParams.get('mode') === 'root' ? 'root' : 'operator';
+    const scope = url.pathname === '/ws/host' ? (mode === 'root' ? 'owner:shell' : 'area:shell') : url.pathname === '/ws/terminal' ? `project:${found!.project}` : undefined;
     const role = scope ? await requireNow(request, user, scope) : undefined;
+    const host = url.pathname === '/ws/host' ? await hostShell(mode, user.login) : undefined;
+    if (host) {
+      console.log(`${user.login} opened a ${mode} host shell`);
+    }
     sockets.handleUpgrade(request, socket, head, (client) => {
       if (scope && role) {
         hold(request, user, scope, role, client, () => client.terminate());
@@ -538,8 +585,8 @@ server.on('upgrade', (request, socket, head) => {
           ? logs(client, found!.id, url.searchParams)
           : url.pathname === '/ws/terminal'
             ? terminal(client, { container: found!.id })
-            : url.pathname === '/ws/host'
-              ? terminal(client, 'host')
+            : host
+              ? terminal(client, { host })
               : Promise.reject(new Error('Unknown socket.'));
       run.catch((error: unknown) => {
         client.send(`\r\n${error instanceof Error ? error.message : 'The session failed.'}\r\n`);

@@ -1,10 +1,11 @@
 import MuiLink from '@mui/material/Link';
-import { Button, ErrorState, PageHeader, TagChip } from '@project-graphite/ui';
+import { Button, ErrorState, Icon, PageHeader, TagChip } from '@project-graphite/ui';
 import { useState } from 'react';
 import { bytes, can, percent, post, shortImage, stateColor, stateOf, type ProjectDetail, type User } from '../api';
 import { Logs } from '../components/Logs';
 import { Redeploy } from '../components/Redeploy';
 import { Metrics } from '../components/Metrics';
+import { usePreference } from '../stored';
 import { usePoll } from '../usePoll';
 import { SecretList } from './Secrets';
 
@@ -30,6 +31,7 @@ function Wake({ slug, onWoken }: { slug: string; onWoken: () => void }) {
 
 export function ProjectPage({ slug, user }: { slug: string; user: User }) {
   const { data: project, error, reload } = usePoll<ProjectDetail>(`/api/projects/${slug}`);
+  const [secretsOpen, setSecretsOpen] = usePreference('console.project.secrets', false);
   if (error && !project) {
     return <ErrorState title={`The console could not read ${slug}`}>{error.message}</ErrorState>;
   }
@@ -100,8 +102,13 @@ export function ProjectPage({ slug, user }: { slug: string; user: User }) {
 
       {can(user, `secrets:${slug}`) && (
         <section className="space-y-2">
-          <h2 className="mono-sm text-muted">Secrets</h2>
-          <SecretList project={slug} user={user} />
+          <h2>
+            <button aria-expanded={secretsOpen} className="mono-sm flex items-center gap-1 text-muted hover:text-ink" onClick={() => setSecretsOpen(!secretsOpen)} type="button">
+              <Icon name={secretsOpen ? 'chevron-down' : 'chevron-right'} size={14} />
+              Secrets
+            </button>
+          </h2>
+          {secretsOpen && <SecretList project={slug} />}
         </section>
       )}
 

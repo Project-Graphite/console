@@ -45,9 +45,19 @@ function useWidth() {
   return { ref, width };
 }
 
-function Breakdown({ lines, at, metric, total, format }: { lines: Series[]; at: number; metric: Metric; total: number; format: (value: number) => string }) {
+function near(points: Series['points'], at: number, step: number) {
+  let best: Series['points'][number] | undefined;
+  for (const point of points) {
+    if (Math.abs(point.at - at) <= step / 2 && (!best || Math.abs(point.at - at) < Math.abs(best.at - at))) {
+      best = point;
+    }
+  }
+  return best;
+}
+
+function Breakdown({ lines, at, step, metric, total, format }: { lines: Series[]; at: number; step: number; metric: Metric; total: number; format: (value: number) => string }) {
   const parts = lines
-    .map((line) => ({ name: line.name, value: line.points.find((point) => point.at === at)?.[metric] ?? 0 }))
+    .map((line) => ({ name: line.name, value: near(line.points, at, step)?.[metric] ?? 0 }))
     .filter((part) => part.value > 0)
     .sort((a, b) => b.value - a.value);
   const rest = total - parts.reduce((sum, part) => sum + part.value, 0);
@@ -94,7 +104,7 @@ export function Chart({ label, series, metric, span, step, now, format, max, bre
 
   const values = hover
     ? plotted
-        .map((line) => ({ name: line.name, point: line.points.find((point) => point.at === hover.at) }))
+        .map((line) => ({ name: line.name, point: near(line.points, hover.at, step) }))
         .filter((entry): entry is { name: string; point: Series['points'][number] } => entry.point !== undefined)
         .sort((a, b) => b.point[metric] - a.point[metric])
     : [];
@@ -105,10 +115,10 @@ export function Chart({ label, series, metric, span, step, now, format, max, bre
     const pointerY = event.clientY - bounds.top;
     const at = Math.round((start + ((pointerX - pad.left) / Math.max(1, width - pad.left - pad.right)) * span) / step) * step;
     const nearest = plotted
-      .map((line) => ({ name: line.name, point: line.points.find((point) => point.at === at) }))
+      .map((line) => ({ name: line.name, point: near(line.points, at, step) }))
       .filter((entry) => entry.point)
       .sort((a, b) => Math.abs(y(a.point![metric]) - pointerY) - Math.abs(y(b.point![metric]) - pointerY))[0];
-    setHover(at >= start && at <= now ? { at, name: nearest?.name, x: x(at) } : undefined);
+    setHover(at >= start - step / 2 && at <= now + step / 2 ? { at, name: nearest?.name, x: x(at) } : undefined);
   };
 
   const ticks = (width < 480 ? [0, 0.5, 1] : [0, 0.25, 0.5, 0.75, 1]).map((fraction) => start + fraction * span);
@@ -185,7 +195,7 @@ export function Chart({ label, series, metric, span, step, now, format, max, bre
               <span className={name === hover.name ? 'font-semibold' : ''}>{format(point[metric])}</span>
             </p>
           ))}
-          {breakdown && <Breakdown at={hover.at} format={format} lines={breakdown} metric={metric} total={values[0].point[metric]} />}
+          {breakdown && <Breakdown at={hover.at} format={format} lines={breakdown} metric={metric} step={step} total={values[0].point[metric]} />}
         </div>
       )}
       {series.length > 1 && (
