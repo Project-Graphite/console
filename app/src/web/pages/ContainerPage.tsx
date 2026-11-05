@@ -101,7 +101,7 @@ export function ContainerPage({ id, user }: { id: string; user: User }) {
         </span>
       </PageHeader>
 
-      <Metrics memoryMax={container.memoryLimit ?? undefined} query={`target=${container.name}`} />
+      <Metrics live={[{ name: container.name, label: container.name }]} memoryMax={container.memoryLimit ?? undefined} query={`target=${container.name}`} />
 
       <section className="stat-card">
         <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-[auto_1fr]">
