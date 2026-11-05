@@ -11,6 +11,7 @@ import { ContainerPage } from './pages/ContainerPage';
 import { Docs } from './pages/Docs';
 import { HostShell } from './pages/HostShell';
 import { Images } from './pages/Images';
+import { LogSearch } from './pages/LogSearch';
 import { Overview } from './pages/Overview';
 import { ProjectPage } from './pages/ProjectPage';
 import { SecretPage, Secrets } from './pages/Secrets';
@@ -48,7 +49,8 @@ function Page({ hash, user }: { hash: string; user: User }) {
   if (user.owner && hash === '/backups') return <Backups />;
   if (hash === '/images') return <Images user={user} />;
   if (hash === '/volumes') return <Volumes />;
-  if (hash === '/alerts') return <Alerts />;
+  if (hash === '/alerts') return <Alerts owner={user.owner} />;
+  if (hash === '/logs') return <LogSearch />;
   if (can(user, 'area:shell') && hash === '/shell') return <HostShell />;
   if (user.owner && hash === '/admin') return <Admin />;
   return <Overview />;
@@ -69,8 +71,9 @@ export function App() {
   }, []);
 
   const pages: ShellTab[] = [
-    { href: '#/', label: 'Overview', icon: 'home', active: !/^\/(images|volumes|alerts|shell|admin|docs|secrets|backups)/.test(hash) },
+    { href: '#/', label: 'Overview', icon: 'home', active: !/^\/(images|volumes|alerts|logs|shell|admin|docs|secrets|backups)/.test(hash) },
     { href: '#/alerts', label: alerts ? `Alerts · ${alerts}` : 'Alerts', icon: 'bell', active: hash === '/alerts' },
+    { href: '#/logs', label: 'Logs', icon: 'search', active: hash === '/logs' },
     { href: '#/images', label: 'Images', icon: 'library', active: hash === '/images' },
     { href: '#/volumes', label: 'Volumes', icon: 'folder', active: hash === '/volumes' },
     ...(user && can(user, 'area:shell') ? ([{ href: '#/shell', label: 'Shell', icon: 'monitor', active: hash === '/shell' }] satisfies ShellTab[]) : []),
