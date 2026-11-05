@@ -2,10 +2,10 @@ import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
-export const scopePattern = /^(\*|area:(images|shell)|project:[a-z0-9-]+)$/;
+export const scopePattern = /^(\*|area:(images|shell)|(project|secrets):[a-z0-9-]+)$/;
 
 export function permits(scopes: string[], scope: string) {
-  return scopes.includes('*') || scopes.includes(scope);
+  return scopes.includes(scope) || (scopes.includes('*') && !scope.startsWith('secrets:'));
 }
 
 export class Access {

@@ -6,7 +6,7 @@ export interface User {
 }
 
 export function can(user: User, scope: string) {
-  return user.grants.includes('*') || user.grants.includes(scope);
+  return user.owner || user.grants.includes(scope) || (user.grants.includes('*') && !scope.startsWith('secrets:'));
 }
 
 export interface Member {
@@ -75,7 +75,63 @@ export interface Host {
 export interface Overview {
   host: Host | null;
   docker: { images: number; containers: number; buildCache: number; volumes: number } | null;
-  projects: Project[];
+  projects: (Project & { needsRedeploy: boolean })[];
+  backups: { projects: number; verified: number; latest: string | null };
+}
+
+export interface BackupSummary {
+  project: string;
+  stamp: string;
+  bytes?: number;
+  imported?: boolean;
+  ok: boolean;
+  errors: string[];
+  items: { path: string; kind: 'postgres' | 'volume'; bytes: number; sqlite?: string[] }[];
+}
+
+export interface BackupRequest {
+  id: string;
+  action: 'run' | 'verify' | 'restore';
+  project: string;
+  archive?: string;
+  by: string;
+  state: 'waiting' | 'running' | 'done' | 'failed';
+  output?: string;
+  at?: string;
+}
+
+export interface BackupsData {
+  projects: { project: string; archives: BackupSummary[] }[];
+  requests: BackupRequest[];
+}
+
+export function stampDate(stamp: string) {
+  return new Date(`${stamp.slice(0, 4)}-${stamp.slice(4, 6)}-${stamp.slice(6, 8)}T${stamp.slice(9, 11)}:${stamp.slice(11, 13)}:${stamp.slice(13, 15)}Z`);
+}
+
+export type SecretType = 'secure' | 'plain';
+
+export interface Secret {
+  project: string;
+  name: string;
+  description: string;
+  type: SecretType;
+  version: number;
+  updatedBy: string;
+  updatedAt: number;
+  value: string | null;
+}
+
+export interface SecretProject {
+  project: string;
+  needsRedeploy: boolean;
+  missing: string[];
+}
+
+export interface SecretDetail extends Secret {
+  history: { version: number; length: number; updatedBy: string; updatedAt: number }[];
+  file: string;
+  usage: number[];
 }
 
 export interface Point {

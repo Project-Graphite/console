@@ -1,30 +1,26 @@
 import { readFile } from 'node:fs/promises';
 import http from 'node:http';
+import path from 'node:path';
 import { WebSocketServer } from 'ws';
 import { Access, permits, scopePattern } from './access.ts';
 import { Alerts } from './alerts.ts';
 import { authenticate, callback, githubToken, login, logout, organisationMembers, roleNow, sessionMs, type Role, type User } from './auth.ts';
+import { download, listBackups, order, requests, upload } from './backups.ts';
 import { config } from './config.ts';
 import { docker } from './docker.ts';
 import { docs } from './docs.ts';
 import { History, projectTotals, ranges, type Range } from './history.ts';
-import { collect, containers, diskUsage, projects, refresh, snapshot } from './inventory.ts';
+import { collect, containers, diskUsage, projects, refresh, snapshot, type ContainerView } from './inventory.ts';
 import { monitor } from './monitor.ts';
 import { open, openSocket, parseOpen } from './proxy.ts';
+import { Refusal } from './refusal.ts';
+import { appliedCompose, composeReferences, parseKeys, projectPattern, SecretStore } from './secrets.ts';
 import { downloadLogs, logs, terminal } from './terminal.ts';
-
-class Refusal extends Error {
-  constructor(
-    readonly status: number,
-    message: string,
-  ) {
-    super(message);
-  }
-}
 
 const history = new History(config.dataDir);
 const access = new Access(config.dataDir);
 const alerts = new Alerts(config.dataDir);
+const store = config.secretsKey ? new SecretStore(config.dataDir, parseKeys(config.secretsKey), path.join(config.hostRoot, 'etc/graphite')) : undefined;
 collect(history);
 monitor(alerts);
 
@@ -140,8 +136,121 @@ async function members(request: http.IncomingMessage, user: User) {
     .sort((a, b) => Number(b.owner) - Number(a.owner) || a.login.localeCompare(b.login));
 }
 
+function secretStore() {
+  if (!store) {
+    throw new Refusal(503, "The secret store needs SECRETS_KEY in the console's env file.");
+  }
+  return store;
+}
+
+function needsRedeploy(project: string, views: ContainerView[]) {
+  const changed = store?.changedAt(project) ?? null;
+  const created = views.filter((view) => view.project === project).map((view) => view.created);
+  return changed !== null && created.length > 0 && changed > Math.max(...created);
+}
+
+async function secretProject(project: string, views: ContainerView[]) {
+  const stored = new Set(secretStore().list(project).map((secret) => secret.name));
+  return {
+    project,
+    needsRedeploy: needsRedeploy(project, views),
+    missing: [...composeReferences(await appliedCompose(project))].filter(([name, reference]) => reference.required && !stored.has(name)).map(([name]) => name),
+  };
+}
+
+async function secretsApi(user: User, request: http.IncomingMessage, route: string) {
+  const secrets = secretStore();
+  if (route === 'GET /api/secrets') {
+    await requireOwnerNow(request);
+    const views = await containers();
+    const slugs = new Set([...secrets.projects(), ...views.map((view) => view.project)].filter((slug) => projectPattern.test(slug) && slug !== 'console' && slug !== 'other'));
+    return { projects: await Promise.all([...slugs].sort().map((slug) => secretProject(slug, views))), secrets: secrets.list() };
+  }
+  const match = /^(GET|POST) \/api\/secrets\/([a-z0-9-]+)(?:\/([A-Z_][A-Z0-9_]*|import|delete|redeploy))?(?:\/(reveal|restore))?$/.exec(route);
+  if (!match) {
+    throw new Refusal(404, 'Not found.');
+  }
+  const [, method, project, target, action] = match;
+  await requireNow(request, user, `secrets:${project}`);
+  if (method === 'GET' && !target) {
+    return { project: await secretProject(project, await containers()), secrets: secrets.list(project) };
+  }
+  if (method === 'GET' && !action && /^[A-Z_]/.test(target)) {
+    return { ...secrets.detail(project, target), file: `${project}/compose.yaml`, usage: composeReferences(await appliedCompose(project)).get(target)?.lines ?? [] };
+  }
+  if (method !== 'POST') {
+    throw new Refusal(404, 'Not found.');
+  }
+  if (!target) {
+    secrets.create(project, await body(request), user.login);
+    return { ok: true };
+  }
+  if (target === 'import' && !action) {
+    const { text, preview } = (await body(request)) as { text?: unknown; preview?: unknown };
+    if (typeof text !== 'string') {
+      throw new Refusal(400, 'Paste the NAME=value lines to import.');
+    }
+    return { names: secrets.importText(project, text, preview === true, user.login) };
+  }
+  if (target === 'delete' && !action) {
+    const { names } = (await body(request)) as { names?: unknown };
+    if (!Array.isArray(names) || !names.every((name) => typeof name === 'string')) {
+      throw new Refusal(400, 'Name the secrets to delete.');
+    }
+    const references = composeReferences(await appliedCompose(project));
+    const required = names.filter((name: string) => references.get(name)?.required);
+    if (required.length) {
+      throw new Refusal(409, `${project}/compose.yaml still requires ${required.join(', ')}.`);
+    }
+    secrets.remove(project, names, user.login);
+    return { ok: true };
+  }
+  if (target === 'redeploy' && !action) {
+    await requireNow(request, user, `project:${project}`);
+    const response = await fetch(`${config.agentUrl}/reapply`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${secrets.value('agent', 'CONSOLE_TOKEN')}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: project, by: user.login }),
+      signal: AbortSignal.timeout(660_000),
+    });
+    if (!response.ok) {
+      throw new Refusal(502, `The agent answered ${response.status}: ${await response.text()}`);
+    }
+    secrets.audit(user.login, 'redeploy', project, null);
+    await refresh();
+    return { ok: true };
+  }
+  if (!action) {
+    secrets.update(project, target, await body(request), user.login);
+    return { ok: true };
+  }
+  if (action === 'reveal') {
+    return { value: secrets.reveal(project, target, user.login) };
+  }
+  const { version } = (await body(request)) as { version?: unknown };
+  if (!Number.isInteger(version)) {
+    throw new Refusal(400, 'Name the version to restore.');
+  }
+  secrets.restore(project, target, version as number, user.login);
+  return { ok: true };
+}
+
 async function api(user: User, request: http.IncomingMessage, url: URL) {
   const route = `${request.method} ${url.pathname}`;
+  if (url.pathname.startsWith('/api/secrets')) {
+    return secretsApi(user, request, route);
+  }
+  if (route === 'GET /api/backups') {
+    if (!user.owner) {
+      throw new Refusal(403, 'Only organisation owners can do that.');
+    }
+    return { projects: await listBackups(), requests: await requests() };
+  }
+  const backup = /^POST \/api\/backups\/([a-z0-9][a-z0-9_-]*)\/(?:run|(\d{8}T\d{6}Z)\/restore)$/.exec(route);
+  if (backup) {
+    await requireOwnerNow(request);
+    return { id: backup[2] ? await order('restore', backup[1], user.login, `${backup[2]}.tar`) : await order('run', backup[1], user.login) };
+  }
   if (route === 'GET /api/me') {
     access.seen(user.login);
     return { ...user, grants: user.owner ? ['*'] : access.scopes(user.login), ssh: user.owner ? config.sshTarget : null };
@@ -153,8 +262,10 @@ async function api(user: User, request: http.IncomingMessage, url: URL) {
     return docs();
   }
   if (route === 'GET /api/overview') {
-    const [{ host }, usage, list] = await Promise.all([snapshot(), diskUsage(), allProjects()]);
+    const [{ host }, usage, list, backups] = await Promise.all([snapshot(), diskUsage(), allProjects(), listBackups()]);
+    const latest = backups.flatMap(({ archives }) => archives.filter((archive) => !archive.imported).slice(0, 1));
     return {
+      backups: { projects: latest.length, verified: latest.filter((archive) => archive.ok).length, latest: latest.map((archive) => archive.stamp).sort().at(-1) ?? null },
       host,
       docker: {
         images: usage.images,
@@ -162,7 +273,7 @@ async function api(user: User, request: http.IncomingMessage, url: URL) {
         buildCache: usage.buildCache,
         volumes: usage.volumes.reduce((sum, volume) => sum + Math.max(0, volume.size), 0),
       },
-      projects: list,
+      projects: list.map((project) => ({ ...project, needsRedeploy: needsRedeploy(project.slug, project.containers) })),
     };
   }
   const project = /^GET \/api\/projects\/([a-z0-9-]+)$/.exec(route);
@@ -221,7 +332,7 @@ async function api(user: User, request: http.IncomingMessage, url: URL) {
     await requireOwnerNow(request);
     const { scopes } = (await body(request)) as { scopes?: unknown };
     if (!Array.isArray(scopes) || !scopes.every((scope) => typeof scope === 'string' && scopePattern.test(scope))) {
-      throw new Refusal(400, 'Access is a list of *, area:images, area:shell or project:<slug>.');
+      throw new Refusal(400, 'Access is a list of *, area:images, area:shell, project:<slug> or secrets:<slug>.');
     }
     access.grant(grant[1], scopes);
     closeRevoked(grant[1]);
@@ -301,13 +412,24 @@ async function handle(request: http.IncomingMessage, response: http.ServerRespon
     await requireNow(request, user, `project:${container.project}`);
     return open(request, response, target, url.search);
   }
-  const download = /^\/api\/containers\/([0-9a-f]{12,64})\/logs$/.exec(url.pathname);
-  if (download && request.method === 'GET') {
-    return downloadLogs(response, await findContainer(download[1]));
+  const logFile = /^\/api\/containers\/([0-9a-f]{12,64})\/logs$/.exec(url.pathname);
+  if (logFile && request.method === 'GET') {
+    return downloadLogs(response, await findContainer(logFile[1]));
+  }
+  const archive = /^\/api\/backups\/([a-z0-9][a-z0-9_-]*)\/(\d{8}T\d{6}Z)\.tar$/.exec(url.pathname);
+  if (archive && request.method === 'GET') {
+    await requireOwnerNow(request);
+    return download(response, archive[1], archive[2], user.login);
   }
   if (url.pathname.startsWith('/api/')) {
     if (request.method === 'POST' && request.headers.origin && request.headers.origin !== new URL(config.appUrl).origin) {
       throw new Refusal(403, 'Cross-origin requests are refused.');
+    }
+    const importing = /^\/api\/backups\/([a-z0-9][a-z0-9_-]*)\/import$/.exec(url.pathname);
+    if (importing && request.method === 'POST') {
+      await requireOwnerNow(request);
+      response.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify(await upload(request, importing[1], user.login)));
+      return;
     }
     const result = await api(user, request, url);
     response.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify(result));

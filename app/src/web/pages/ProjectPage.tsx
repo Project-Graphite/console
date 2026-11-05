@@ -5,6 +5,7 @@ import { bytes, can, percent, post, shortImage, stateColor, stateOf, type Projec
 import { Logs } from '../components/Logs';
 import { Metrics } from '../components/Metrics';
 import { usePoll } from '../usePoll';
+import { SecretList } from './Secrets';
 
 function Wake({ slug, onWoken }: { slug: string; onWoken: () => void }) {
   const [message, setMessage] = useState<string>();
@@ -88,6 +89,13 @@ export function ProjectPage({ slug, user }: { slug: string; user: User }) {
           </table>
         </div>
       </section>
+
+      {can(user, `secrets:${slug}`) && (
+        <section className="space-y-2">
+          <h2 className="mono-sm text-muted">Secrets</h2>
+          <SecretList project={slug} user={user} />
+        </section>
+      )}
 
       <section className="space-y-2">
         <h2 className="mono-sm text-muted">Logs</h2>

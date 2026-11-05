@@ -32,6 +32,12 @@ function Access({ member, projects, onSaved }: { member: Member; projects: strin
     <div className="space-y-2">
       <div className="flex flex-wrap gap-x-4 gap-y-1">{areas.map((area) => option(area.scope, area.label, area.scope !== '*' && everything))}</div>
       <div className="flex flex-wrap gap-x-4 gap-y-1">{projects.map((slug) => option(`project:${slug}`, slug, everything))}</div>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+        <span className="mono-sm text-faint">secrets</span>
+        {projects.map((slug) => (
+          <Checkbox checked={scopes.includes(`secrets:${slug}`)} key={slug} label={slug} onChange={() => toggle(`secrets:${slug}`)} />
+        ))}
+      </div>
       <div className="flex items-center gap-3">
         <Button disabled={!changed} onClick={save} size="small">
           Save

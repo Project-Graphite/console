@@ -45,8 +45,15 @@ describe('permits', () => {
     expect(permits([], 'area:images')).toBe(false);
   });
 
+  it('grants a project\'s secrets only by name, never through *', () => {
+    expect(permits(['secrets:strata'], 'secrets:strata')).toBe(true);
+    expect(permits(['secrets:strata'], 'secrets:pixelpocket')).toBe(false);
+    expect(permits(['*'], 'secrets:strata')).toBe(false);
+    expect(permits(['secrets:strata'], 'project:strata')).toBe(false);
+  });
+
   it('accepts only known scopes', () => {
-    expect(['*', 'area:shell', 'area:images', 'project:graphite-tracker'].every((scope) => scopePattern.test(scope))).toBe(true);
-    expect(['owner', 'area:admin', 'project:', 'project:../x'].some((scope) => scopePattern.test(scope))).toBe(false);
+    expect(['*', 'area:shell', 'area:images', 'project:graphite-tracker', 'secrets:agent'].every((scope) => scopePattern.test(scope))).toBe(true);
+    expect(['owner', 'area:admin', 'project:', 'project:../x', 'secrets:', 'secrets:*'].some((scope) => scopePattern.test(scope))).toBe(false);
   });
 });
